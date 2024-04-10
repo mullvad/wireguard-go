@@ -439,17 +439,16 @@ func (peer *Peer) RoutineSequentialSender() {
 		if len(elem.packet) != MessageKeepaliveSize {
 			peer.timersDataSent()
 		}
+		// TODO: Is this the correct place?
+		if device.Daita != nil {
+			peer.device.Daita.NonpaddingSent(peer, elem.packet)
+		}
+
 		device.PutMessageBuffer(elem.buffer)
 		device.PutOutboundElement(elem)
 		if err != nil {
 			device.log.Errorf("%v - Failed to send data packet: %v", peer, err)
 			continue
-		}
-
-		device.log.Verbosef("DAITA: Non-padding sent")
-		// TODO: Is this the correct place?
-		if device.Daita != nil {
-			peer.device.Daita.NonpaddingSent(peer, elem.packet)
 		}
 
 		peer.keepKeyFreshSending()
