@@ -17,9 +17,9 @@ const (
 )
 
 type Event struct {
-	peer      NoisePublicKey
-	eventType EventType
-	xmitBytes uint16
+	Peer      NoisePublicKey
+	EventType EventType
+	XmitBytes uint16
 	//TODO? context uint64
 }
 
@@ -77,17 +77,17 @@ func (daita *Daita) NonpaddingSent(peer *Peer, packet []byte) {
 func (daita *Daita) sendEvent(peer *Peer, packet []byte, eventType EventType) {
 	event := Event{
 		// TODO: am i really copying the array?
-		peer:      peer.handshake.remoteStatic,
-		eventType: eventType,
-		xmitBytes: uint16(len(packet)),
+		Peer:      peer.handshake.remoteStatic,
+		EventType: eventType,
+		XmitBytes: uint16(len(packet)),
 	}
 
-	peer.device.log.Verbosef("%v: %d", eventType, len(packet))
+	peer.device.log.Verbosef("DAITA event: %v len=%d", eventType, len(packet))
 
 	select {
 	case daita.events <- event:
 	default:
-		peer.device.log.Verbosef("Dropped DAITA event %v due to full buffer", event.eventType)
+		peer.device.log.Verbosef("Dropped DAITA event %v due to full buffer", event.EventType)
 		break
 	}
 }
