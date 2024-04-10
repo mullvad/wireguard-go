@@ -87,6 +87,8 @@ type Device struct {
 	ipcMutex sync.RWMutex
 	closed   chan struct{}
 	log      *Logger
+
+	Daita *Daita
 }
 
 // deviceState represents the state of a Device.
