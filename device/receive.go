@@ -473,6 +473,7 @@ func (peer *Peer) RoutineSequentialReceiver() {
 		}
 
 		// TODO: Daita. is this the right place?
+		device.log.Verbosef("DAITA: Non-padding received") // TODO: remove
 		if device.Daita != nil {
 			device.Daita.NonpaddingReceived(peer, elem.packet)
 		}

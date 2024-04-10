@@ -446,6 +446,7 @@ func (peer *Peer) RoutineSequentialSender() {
 			continue
 		}
 
+		device.log.Verbosef("DAITA: Non-padding sent")
 		// TODO: Is this the correct place?
 		if device.Daita != nil {
 			peer.device.Daita.NonpaddingSent(peer, elem.packet)
