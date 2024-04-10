@@ -472,6 +472,11 @@ func (peer *Peer) RoutineSequentialReceiver() {
 			goto skip
 		}
 
+		// TODO: Daita. is this the right place?
+		if device.Daita != nil {
+			device.Daita.NonpaddingReceived(peer, elem.packet)
+		}
+
 		_, err = device.tun.device.Write(elem.buffer[:MessageTransportOffsetContent+len(elem.packet)], MessageTransportOffsetContent)
 		if err != nil && !device.isClosed() {
 			device.log.Errorf("Failed to write packet to TUN device: %v", err)

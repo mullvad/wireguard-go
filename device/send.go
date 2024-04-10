@@ -446,6 +446,11 @@ func (peer *Peer) RoutineSequentialSender() {
 			continue
 		}
 
+		// TODO: Is this the correct place?
+		if device.Daita != nil {
+			peer.device.Daita.NonpaddingSent(peer, elem.packet)
+		}
+
 		peer.keepKeyFreshSending()
 	}
 }
