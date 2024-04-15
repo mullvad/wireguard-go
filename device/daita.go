@@ -1,7 +1,6 @@
 package device
 
 import (
-	"errors"
 	"fmt"
 )
 
@@ -107,12 +106,12 @@ func (daita *Daita) ReceiveEvent() (Event, error) {
 	return <-daita.events, nil
 }
 
-func (daita *Daita) SendAction(action *Action) error {
-	if action == nil {
-		return errors.New("DAITA action was nil")
-	}
+func (daita *Daita) SendAction(action Action) error {
+	// if action == nil {
+	// 	return errors.New("DAITA action was nil")
+	// }
 	fmt.Printf("Got DAITA action: %v\n", action)
-	daita.actions <- *action
+	daita.actions <- action
 	return nil
 }
 
