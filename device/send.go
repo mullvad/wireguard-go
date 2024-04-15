@@ -50,6 +50,7 @@ type QueueOutboundElement struct {
 	nonce   uint64                // nonce for encryption
 	keypair *Keypair              // keypair for encryption
 	peer    *Peer                 // related peer
+	padding bool
 }
 
 func (device *Device) NewOutboundElement() *QueueOutboundElement {
@@ -57,6 +58,7 @@ func (device *Device) NewOutboundElement() *QueueOutboundElement {
 	elem.buffer = device.GetMessageBuffer()
 	elem.Mutex = sync.Mutex{}
 	elem.nonce = 0
+	elem.padding = false
 	// keypair and peer were cleared (if necessary) by clearPointers.
 	return elem
 }
@@ -441,7 +443,11 @@ func (peer *Peer) RoutineSequentialSender() {
 		}
 		// TODO: Is this the correct place?
 		if device.Daita != nil {
-			peer.device.Daita.NonpaddingSent(peer, elem.packet)
+			if elem.padding {
+				peer.device.Daita.PaddingSent(peer, elem.packet)
+			} else {
+				peer.device.Daita.NonpaddingSent(peer, elem.packet)
+			}
 		}
 
 		device.PutMessageBuffer(elem.buffer)
@@ -452,5 +458,33 @@ func (peer *Peer) RoutineSequentialSender() {
 		}
 
 		peer.keepKeyFreshSending()
+	}
+}
+
+func (peer *Peer) SendPaddingPackets() {
+	for action := range peer.device.Daita.actions {
+		if action.ActionType != 0 {
+			peer.device.log.Errorf("Got unknown action type %v", action.ActionType)
+		}
+
+		elem := peer.device.NewOutboundElement()
+
+		elem.padding = true
+
+		offset := MessageTransportHeaderSize
+		size := int(action.Payload.ByteCount)
+
+		if size == 0 || size > MaxContentSize {
+			peer.device.log.Errorf("DAITA padding action contained invalid size %v bytes", size)
+			continue
+		}
+
+		elem.packet = elem.buffer[offset : offset+size]
+		elem.packet[0] = 0xff
+		// TODO: elem.packet[2:3] = size
+
+		// TODO: fill elem
+		peer.StagePacket(elem)
+
 	}
 }

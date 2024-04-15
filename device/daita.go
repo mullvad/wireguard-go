@@ -73,10 +73,19 @@ func (daita *Daita) NonpaddingReceived(peer *Peer, packet []byte) {
 	daita.sendEvent(peer, packet, NonpaddingReceived)
 }
 
+func (daita *Daita) PaddingReceived(peer *Peer, packet []byte) {
+	daita.sendEvent(peer, packet, PaddingReceived)
+}
+
 func (daita *Daita) NonpaddingSent(peer *Peer, packet []byte) {
 	daita.sendEvent(peer, packet, NonpaddingSent)
 }
 
+func (daita *Daita) PaddingSent(peer *Peer, packet []byte) {
+	daita.sendEvent(peer, packet, PaddingSent)
+}
+
+// TODO: change packet to packet_len?
 func (daita *Daita) sendEvent(peer *Peer, packet []byte, eventType EventType) {
 	event := Event{
 		// TODO: am i really copying the array?
@@ -103,6 +112,7 @@ func (daita *Daita) SendAction(action *Action) error {
 		return errors.New("DAITA action was nil")
 	}
 	fmt.Printf("Got DAITA action: %v\n", action)
+	daita.actions <- *action
 	return nil
 }
 

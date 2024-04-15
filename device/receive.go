@@ -466,6 +466,13 @@ func (peer *Peer) RoutineSequentialReceiver() {
 				device.log.Verbosef("IPv6 packet with disallowed source address from %v", peer)
 				goto skip
 			}
+		case 0xf:
+			// DAITA padding packet
+			// TODO: Change to len(elem.packet) to avoid invalidated pointer
+			if device.Daita != nil {
+				device.Daita.PaddingReceived(peer, elem.packet)
+			}
+			goto skip
 
 		default:
 			device.log.Verbosef("Packet with invalid IP version from %v", peer)

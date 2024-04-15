@@ -189,6 +189,7 @@ func (peer *Peer) Start() {
 	device.flushOutboundQueue(peer.queue.outbound)
 	go peer.RoutineSequentialSender()
 	go peer.RoutineSequentialReceiver()
+	go peer.SendPaddingPackets()
 
 	peer.isRunning.Store(true)
 }
