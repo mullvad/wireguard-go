@@ -1,6 +1,9 @@
 package device
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 type Daita struct {
 	events  chan Event
@@ -30,20 +33,20 @@ const (
 )
 
 type Action struct {
-	peer       NoisePublicKey
-	actionType ActionType
-	// TODO: I assume payload is somehow dependent on `actionType`?
+	Peer       NoisePublicKey
+	ActionType ActionType
+	// TODO: I assume Payload is somehow dependent on `actionType`?
 	// Maybe the `ActionType` enum could be replaced with an interface,
-	// and `actionType` + `payload` squashed into one member field.
+	// and `actionType` + `Payload` squashed into one member field.
 	// In any case, the `Padding` type is not general enough as it
 	// corresponds to the `InjectPadding` variant.
-	payload Padding
+	Payload Padding
 	//TODO? context uint64
 }
 
 type Padding struct {
-	byteCount uint16
-	replace   bool
+	ByteCount uint16
+	Replace   bool
 }
 
 func (device *Device) ActivateDaita(eventsCapacity uint, actionsCapacity uint) {
@@ -88,12 +91,19 @@ func (daita *Daita) sendEvent(peer *Peer, packet []byte, eventType EventType) {
 	case daita.events <- event:
 	default:
 		peer.device.log.Verbosef("Dropped DAITA event %v due to full buffer", event.EventType)
-		break
 	}
 }
 
 func (daita *Daita) ReceiveEvent() (Event, error) {
 	return <-daita.events, nil
+}
+
+func (daita *Daita) SendAction(action *Action) error {
+	if action == nil {
+		return errors.New("DAITA action was nil")
+	}
+	fmt.Printf("Got DAITA action: %v\n", action)
+	return nil
 }
 
 // TODO: PaddingSent
