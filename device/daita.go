@@ -6,7 +6,7 @@ import (
 
 type Daita struct {
 	events  chan Event
-	actions chan Action
+	actions chan *Action
 }
 
 type EventType uint32
@@ -48,23 +48,28 @@ type Padding struct {
 	Replace   bool
 }
 
-func (device *Device) ActivateDaita(eventsCapacity uint, actionsCapacity uint) {
+// TODO: Turn off DAITA? Remember to send a nil action when doing so
+func (device *Device) ActivateDaita(eventsCapacity uint, actionsCapacity uint) bool {
 	if device.Daita != nil {
-		return
+		device.log.Errorf("Failed to activate DAITA as it is already active")
+		return false
 	}
 	device.Daita = newDaita(eventsCapacity, actionsCapacity)
+	go device.HandleDaitaActions()
+
 	device.log.Verbosef("DAITA activated")
 	device.log.Verbosef("Params: eventsCapacity=%v, actionsCapacity=%v", eventsCapacity, actionsCapacity) // TODO: Deleteme
-	fmt.Println("DAITA activated stdout")
+	fmt.Println("DAITA activated stdout")                                                                 // TODO: deleteme
+	return true
 }
 
 func newDaita(eventsCapacity uint, actionsCapacity uint) *Daita {
 	daita := new(Daita)
 	// TODO: Remove this comment
-	// Not specifiying a buffer size means that sending to a non-empty channel
+	// Not specifying a buffer size means that sending to a non-empty channel
 	// is blocking: https://go.dev/doc/effective_go#channels
 	daita.events = make(chan Event, eventsCapacity)
-	daita.actions = make(chan Action, actionsCapacity)
+	daita.actions = make(chan *Action, actionsCapacity)
 	return daita
 }
 
@@ -102,6 +107,7 @@ func (daita *Daita) sendEvent(peer *Peer, packet []byte, eventType EventType) {
 	}
 }
 
+// TODO: send nil event if closing DAITA
 func (daita *Daita) ReceiveEvent() (Event, error) {
 	return <-daita.events, nil
 }
@@ -111,7 +117,7 @@ func (daita *Daita) SendAction(action Action) error {
 	// 	return errors.New("DAITA action was nil")
 	// }
 	fmt.Printf("Got DAITA action: %v\n", action)
-	daita.actions <- action
+	daita.actions <- &action
 	return nil
 }
 
