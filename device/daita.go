@@ -138,3 +138,42 @@ func (event EventType) String() string {
 	}
 	return pretty
 }
+
+func (device *Device) HandleDaitaActions() {
+	for action := range device.Daita.actions {
+		if action == nil {
+			device.log.Verbosef("Closing action channel")
+			return
+		}
+		if action.ActionType != 0 {
+			device.log.Errorf("Got unknown action type %v", action.ActionType)
+		}
+
+		elem := device.NewOutboundElement()
+
+		elem.padding = true
+
+		offset := MessageTransportHeaderSize
+		size := int(action.Payload.ByteCount)
+
+		if size == 0 || size > MaxContentSize {
+			device.log.Errorf("DAITA padding action contained invalid size %v bytes", size)
+			continue
+		}
+
+		elem.packet = elem.buffer[offset : offset+size]
+		elem.packet[0] = 0xff
+		// TODO: write elem.packet[2:3] = size
+
+		peer := device.LookupPeer(action.Peer)
+		if peer == nil {
+			// TODO: Is this a proper way to handle invalid peers?
+			device.log.Errorf("Closing action channel because of invalid peer")
+			return
+		}
+
+		// TODO: fill elem
+		peer.StagePacket(elem)
+
+	}
+}
