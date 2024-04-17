@@ -365,6 +365,8 @@ func (device *Device) Close() {
 	device.tun.device.Close()
 	device.downLocked()
 
+	device.Daita.Close()
+
 	// Remove peers before closing queues,
 	// because peers assume that queues are active.
 	device.RemoveAllPeers()
@@ -380,6 +382,7 @@ func (device *Device) Close() {
 	device.rate.limiter.Close()
 
 	device.log.Verbosef("Device closed")
+
 	close(device.closed)
 }
 

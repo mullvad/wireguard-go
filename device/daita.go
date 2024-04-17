@@ -5,7 +5,7 @@ import (
 )
 
 type Daita struct {
-	events  chan Event
+	events  chan *Event
 	actions chan *Action
 }
 
@@ -68,7 +68,7 @@ func newDaita(eventsCapacity uint, actionsCapacity uint) *Daita {
 	// TODO: Remove this comment
 	// Not specifying a buffer size means that sending to a non-empty channel
 	// is blocking: https://go.dev/doc/effective_go#channels
-	daita.events = make(chan Event, eventsCapacity)
+	daita.events = make(chan *Event, eventsCapacity)
 	daita.actions = make(chan *Action, actionsCapacity)
 	return daita
 }
@@ -101,15 +101,20 @@ func (daita *Daita) sendEvent(peer *Peer, packet_len int, eventType EventType) {
 	peer.device.log.Verbosef("DAITA event: %v len=%d", eventType, packet_len)
 
 	select {
-	case daita.events <- event:
+	case daita.events <- &event:
 	default:
 		peer.device.log.Verbosef("Dropped DAITA event %v due to full buffer", event.EventType)
 	}
 }
 
+func (daita *Daita) Close() {
+	daita.actions <- nil
+	daita.events <- nil
+}
+
 // TODO: send nil event if closing DAITA
-func (daita *Daita) ReceiveEvent() (Event, error) {
-	return <-daita.events, nil
+func (daita *Daita) ReceiveEvent() *Event {
+	return <-daita.events
 }
 
 func (daita *Daita) SendAction(action Action) error {
