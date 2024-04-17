@@ -444,9 +444,9 @@ func (peer *Peer) RoutineSequentialSender() {
 		// TODO: Is this the correct place?
 		if device.Daita != nil {
 			if elem.padding {
-				peer.device.Daita.PaddingSent(peer, elem.packet)
+				peer.device.Daita.PaddingSent(peer, len(elem.packet))
 			} else {
-				peer.device.Daita.NonpaddingSent(peer, elem.packet)
+				peer.device.Daita.NonpaddingSent(peer, len(elem.packet))
 			}
 		}
 

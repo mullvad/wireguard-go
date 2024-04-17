@@ -73,32 +73,32 @@ func newDaita(eventsCapacity uint, actionsCapacity uint) *Daita {
 	return daita
 }
 
-func (daita *Daita) NonpaddingReceived(peer *Peer, packet []byte) {
-	daita.sendEvent(peer, packet, NonpaddingReceived)
+func (daita *Daita) NonpaddingReceived(peer *Peer, packet_len int) {
+	daita.sendEvent(peer, packet_len, NonpaddingReceived)
 }
 
-func (daita *Daita) PaddingReceived(peer *Peer, packet []byte) {
-	daita.sendEvent(peer, packet, PaddingReceived)
+func (daita *Daita) PaddingReceived(peer *Peer, packet_len int) {
+	daita.sendEvent(peer, packet_len, PaddingReceived)
 }
 
-func (daita *Daita) NonpaddingSent(peer *Peer, packet []byte) {
-	daita.sendEvent(peer, packet, NonpaddingSent)
+func (daita *Daita) NonpaddingSent(peer *Peer, packet_len int) {
+	daita.sendEvent(peer, packet_len, NonpaddingSent)
 }
 
-func (daita *Daita) PaddingSent(peer *Peer, packet []byte) {
-	daita.sendEvent(peer, packet, PaddingSent)
+func (daita *Daita) PaddingSent(peer *Peer, packet_len int) {
+	daita.sendEvent(peer, packet_len, PaddingSent)
 }
 
 // TODO: change packet to packet_len?
-func (daita *Daita) sendEvent(peer *Peer, packet []byte, eventType EventType) {
+func (daita *Daita) sendEvent(peer *Peer, packet_len int, eventType EventType) {
 	event := Event{
 		// TODO: am i really copying the array?
 		Peer:      peer.handshake.remoteStatic,
 		EventType: eventType,
-		XmitBytes: uint16(len(packet)),
+		XmitBytes: uint16(packet_len),
 	}
 
-	peer.device.log.Verbosef("DAITA event: %v len=%d", eventType, len(packet))
+	peer.device.log.Verbosef("DAITA event: %v len=%d", eventType, packet_len)
 
 	select {
 	case daita.events <- event:

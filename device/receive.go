@@ -470,7 +470,7 @@ func (peer *Peer) RoutineSequentialReceiver() {
 			// DAITA padding packet
 			// TODO: Change to len(elem.packet) to avoid invalidated pointer
 			if device.Daita != nil {
-				device.Daita.PaddingReceived(peer, elem.packet)
+				device.Daita.PaddingReceived(peer, len(elem.packet))
 			}
 			goto skip
 
@@ -481,7 +481,7 @@ func (peer *Peer) RoutineSequentialReceiver() {
 
 		// TODO: Daita. is this the right place?
 		if device.Daita != nil {
-			device.Daita.NonpaddingReceived(peer, elem.packet)
+			device.Daita.NonpaddingReceived(peer, len(elem.packet))
 		}
 
 		_, err = device.tun.device.Write(elem.buffer[:MessageTransportOffsetContent+len(elem.packet)], MessageTransportOffsetContent)
