@@ -108,6 +108,11 @@ func (daita *Daita) sendEvent(peer *Peer, packet_len int, eventType EventType) {
 }
 
 func (daita *Daita) Close() {
+	// *if* Daita has not yet been initialized before calling Daita.Close,
+	// daita will be nil.
+	if daita == nil {
+		return
+	}
 	daita.actions <- nil
 	daita.events <- nil
 }
