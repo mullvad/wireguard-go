@@ -280,6 +280,10 @@ func (device *Device) RoutineReadFromTUN() {
 
 func (peer *Peer) StagePacket(elem *QueueOutboundElement) {
 	for {
+		if peer == nil || peer.queue.staged == nil {
+			return
+		}
+
 		select {
 		case peer.queue.staged <- elem:
 			return
