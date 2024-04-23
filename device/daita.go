@@ -108,6 +108,7 @@ func (device *Device) ActivateDaita(machines string, eventsCapacity uint, action
 		maybenot:       maybenot,
 		newActionsBuf:  make([]C.MaybenotAction, numMachines),
 		machineActions: map[uint64]Action{},
+		logger:         device.log,
 	}
 
 	go device.HandleDaitaActions()
