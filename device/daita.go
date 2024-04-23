@@ -94,7 +94,7 @@ func (device *Device) ActivateDaita(machines string, eventsCapacity uint, action
 		(*C.int8_t)(c_machines), 0.0, 0.0, 1440,
 		&maybenot,
 	)
-	C.free(unsafe.Pointer(&c_machines))
+	C.free(unsafe.Pointer(c_machines))
 
 	if maybenot_result != 0 {
 		device.log.Errorf("Failed to initialize maybenot, code=%d", maybenot_result)
