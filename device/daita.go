@@ -1,7 +1,6 @@
 package device
 
 import (
-	"fmt"
 	"time"
 	"unsafe"
 )
@@ -177,15 +176,6 @@ func (daita *Daita) ReceiveEvent() *Event {
 	return <-daita.Events
 }
 
-func (daita *Daita) SendAction(action Action) error {
-	// if action == nil {
-	// 	return errors.New("DAITA action was nil")
-	// }
-	fmt.Printf("Got DAITA action: %v\n", action)
-	daita.actions <- &action
-	return nil
-}
-
 // TODO: PaddingSent
 // TODO: PaddingReceived
 
@@ -244,12 +234,6 @@ func (device *Device) HandleDaitaActions() {
 }
 
 func (daita *Daita) handleEvents() {
-
-	// if self == nil {
-	// 	self.logger.Errorf("DAITA not activated")
-	// 	return
-	// }
-
 	// TODO: proper race-condition safe nil checks for everything
 	events := daita.Events
 
@@ -297,7 +281,7 @@ func (daita *Daita) handleEvents() {
 			// it's time to do the action! pop it from the map and send it to wireguard-go
 			action := daita.machineActions[*nextActionMachine]
 			delete(daita.machineActions, *nextActionMachine)
-			daita.actOnAction(action)
+			daita.actions <- &action
 		}
 	}
 }
@@ -360,12 +344,4 @@ func maybenotDurationToGoDuration(duration C.MaybenotDuration) time.Duration {
 	// let's just assume this is fine...
 	nanoseconds := uint64(duration.secs)*1_000_000_000 + uint64(duration.nanos)
 	return time.Duration(nanoseconds)
-}
-
-func (daita *Daita) actOnAction(action Action) {
-	err := daita.SendAction(action)
-	if err != nil {
-		daita.logger.Errorf("Failed to send DAITA action %v because of %v", action, err)
-		return
-	}
 }
