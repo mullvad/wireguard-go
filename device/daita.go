@@ -9,7 +9,7 @@ import (
 // #include <stdio.h>
 // #include <stdlib.h>
 // #include "../cmaybenot/cmaybenot.h"
-// #cgo LDFLAGS: -L${SRCDIR}/../cmaybenot/target/release -lcmaybenot -lm
+// #cgo LDFLAGS: -L${SRCDIR}/../cmaybenot/target/release -l:libcmaybenot.a -lm
 import "C"
 
 type Daita struct {
