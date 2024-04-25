@@ -35,9 +35,9 @@ type Event struct {
 type ActionType uint32
 
 const (
-	Cancel        = ActionType(0)
-	InjectPadding = ActionType(1)
-	BlockOutgoing = ActionType(2)
+	ActionTypeCancel ActionType = iota
+	ActionTypeInjectPadding
+	ActionTypeBlockOutgoing
 )
 
 const (
@@ -61,7 +61,7 @@ type Action struct {
 	// The time at which the action should be performed
 	Time time.Time
 
-	// TODO: Support more action types than InjectPadding
+	// TODO: Support more action types than ActionTypeInjectPadding
 	Payload Padding
 }
 
