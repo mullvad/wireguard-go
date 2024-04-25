@@ -46,8 +46,7 @@ const (
 )
 
 type EventContext struct {
-	tunnelHandle int32
-	peer         NoisePublicKey
+	peer NoisePublicKey
 }
 
 type Action struct {
