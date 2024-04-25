@@ -445,12 +445,14 @@ func (peer *Peer) RoutineSequentialSender() {
 		if len(elem.packet) != MessageKeepaliveSize {
 			peer.timersDataSent()
 		}
+
 		// TODO: Is this the correct place?
-		if device.Daita != nil {
+		daita := device.Daita
+		if daita != nil {
 			if elem.padding {
-				peer.device.Daita.PaddingSent(peer, len(elem.packet))
+				daita.Event(peer, PaddingSent, uint(len(elem.packet)))
 			} else {
-				peer.device.Daita.NonpaddingSent(peer, len(elem.packet))
+				daita.Event(peer, NonpaddingSent, uint(len(elem.packet)))
 			}
 		}
 

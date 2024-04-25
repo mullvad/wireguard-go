@@ -88,7 +88,7 @@ type Device struct {
 	closed   chan struct{}
 	log      *Logger
 
-	Daita *Daita
+	Daita Daita
 }
 
 // deviceState represents the state of a Device.
@@ -365,7 +365,7 @@ func (device *Device) Close() {
 	device.tun.device.Close()
 	device.downLocked()
 
-	device.Daita.Close()
+	device.Daita.Disable()
 
 	// Remove peers before closing queues,
 	// because peers assume that queues are active.

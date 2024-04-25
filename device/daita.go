@@ -1,3 +1,6 @@
+//go:build daita
+// +build daita
+
 package device
 
 import (
@@ -11,23 +14,14 @@ import (
 // #cgo LDFLAGS: -L${SRCDIR}/../cmaybenot/target/release -l:libcmaybenot.a -lm
 import "C"
 
-type Daita struct {
-	Events         chan *Event
+type MaybenotDaita struct {
+	events         chan *Event
 	actions        chan *Action
 	maybenot       *C.Maybenot
 	newActionsBuf  []C.MaybenotAction
 	machineActions map[uint64]Action
 	logger         *Logger
 }
-
-type EventType uint32
-
-const (
-	NonpaddingSent = EventType(iota)
-	NonpaddingReceived
-	PaddingSent
-	PaddingReceived
-)
 
 type Event struct {
 	// The machine that generated the action that generated this event, if any.
@@ -41,9 +35,9 @@ type Event struct {
 type ActionType uint32
 
 const (
-	Cancel        = 0
-	InjectPadding = 1
-	BlockOutgoing = 2
+	Cancel        = ActionType(0)
+	InjectPadding = ActionType(1)
+	BlockOutgoing = ActionType(2)
 )
 
 const (
@@ -78,7 +72,7 @@ type Padding struct {
 }
 
 // TODO: Turn off DAITA? Remember to send a nil action when doing so
-func (device *Device) ActivateDaita(machines string, eventsCapacity uint, actionsCapacity uint) bool {
+func (device *Device) EnableDaita(machines string, eventsCapacity uint, actionsCapacity uint) bool {
 	if device.Daita != nil {
 		device.log.Errorf("Failed to activate DAITA as it is already active")
 		return false
@@ -101,8 +95,8 @@ func (device *Device) ActivateDaita(machines string, eventsCapacity uint, action
 	}
 
 	numMachines := C.maybenot_num_machines(maybenot)
-	daita := Daita{
-		Events:         make(chan *Event, eventsCapacity),
+	daita := MaybenotDaita{
+		events:         make(chan *Event, eventsCapacity),
 		actions:        make(chan *Action, actionsCapacity),
 		maybenot:       maybenot,
 		newActionsBuf:  make([]C.MaybenotAction, numMachines),
@@ -110,98 +104,58 @@ func (device *Device) ActivateDaita(machines string, eventsCapacity uint, action
 		logger:         device.log,
 	}
 
-	go device.HandleDaitaActions()
+	go daita.HandleDaitaActions(device)
 	go daita.handleEvents()
 	device.Daita = &daita
 
 	return true
 }
 
-func newDaita(eventsCapacity uint, actionsCapacity uint) *Daita {
-	daita := new(Daita)
-	// TODO: Remove this comment
-	// Not specifying a buffer size means that sending to a non-empty channel
-	// is blocking: https://go.dev/doc/effective_go#channels
-	daita.Events = make(chan *Event, eventsCapacity)
-	daita.actions = make(chan *Action, actionsCapacity)
-	return daita
-}
-
-func (daita *Daita) NonpaddingReceived(peer *Peer, packet_len int) {
-	daita.sendEvent(peer, packet_len, NonpaddingReceived)
-}
-
-func (daita *Daita) PaddingReceived(peer *Peer, packet_len int) {
-	daita.sendEvent(peer, packet_len, PaddingReceived)
-}
-
-func (daita *Daita) NonpaddingSent(peer *Peer, packet_len int) {
-	daita.sendEvent(peer, packet_len, NonpaddingSent)
-}
-
-func (daita *Daita) PaddingSent(peer *Peer, packet_len int) {
-	daita.sendEvent(peer, packet_len, PaddingSent)
-}
-
-// TODO: change packet to packet_len?
-func (daita *Daita) sendEvent(peer *Peer, packet_len int, eventType EventType) {
-	event := Event{
-		// TODO: am i really copying the array?
-		Peer:      peer.handshake.remoteStatic,
-		EventType: eventType,
-		XmitBytes: uint16(packet_len),
-	}
-
-	peer.device.log.Verbosef("DAITA event: %v len=%d", eventType, packet_len)
-
-	select {
-	case daita.Events <- &event:
-	default:
-		peer.device.log.Verbosef("Dropped DAITA event %v due to full buffer", event.EventType)
-	}
-}
-
-func (daita *Daita) Close() {
+func (daita *MaybenotDaita) Disable() {
 	// *if* Daita has not yet been initialized before calling Daita.Close,
 	// daita will be nil.
 	if daita == nil {
 		return
 	}
+
 	daita.actions <- nil
-	daita.Events <- nil
+	daita.events <- nil
 }
 
-// TODO: send nil event if closing DAITA
-func (daita *Daita) ReceiveEvent() *Event {
-	return <-daita.Events
-}
-
-// TODO: PaddingSent
-// TODO: PaddingReceived
-
-func (event EventType) String() string {
-	var pretty string
-	switch event {
-	case NonpaddingSent:
-		pretty = "NonpaddingSent"
-	case NonpaddingReceived:
-		pretty = "NonpaddingReceived"
-	case PaddingSent:
-		pretty = "PaddingSent"
-	case PaddingReceived:
-		pretty = "PaddingReceived"
+func (daita *MaybenotDaita) Event(peer *Peer, eventType EventType, packetLen uint) {
+	if daita == nil {
+		return
 	}
-	return pretty
+
+	event := Event{
+		// TODO: am i really copying the array?
+		Peer:      peer.handshake.remoteStatic,
+		EventType: eventType,
+		XmitBytes: uint16(packetLen),
+	}
+
+	peer.device.log.Verbosef("DAITA event: %v len=%d", eventType, packetLen)
+
+	select {
+	case daita.events <- &event:
+	default:
+		peer.device.log.Verbosef("Dropped DAITA event %v due to full buffer", event.EventType)
+	}
 }
 
-func (device *Device) HandleDaitaActions() {
-	for action := range device.Daita.actions {
+func (daita *MaybenotDaita) HandleDaitaActions(device *Device) {
+	if device == nil {
+		// TODO: error
+		return
+	}
+
+	for action := range daita.actions {
 		if action == nil {
-			device.log.Verbosef("Closing action channel")
+			daita.logger.Verbosef("Closing action channel")
 			return
 		}
 		if action.ActionType != 1 {
-			device.log.Errorf("Got unknown action type %v", action.ActionType)
+			daita.logger.Errorf("Got unknown action type %v", action.ActionType)
 		}
 
 		elem := device.NewOutboundElement()
@@ -233,9 +187,9 @@ func (device *Device) HandleDaitaActions() {
 	}
 }
 
-func (daita *Daita) handleEvents() {
+func (daita MaybenotDaita) handleEvents() {
 	// TODO: proper race-condition safe nil checks for everything
-	events := daita.Events
+	events := daita.events
 
 	// create a new inactive timer to help us track when maybenot actions should be performed.
 	actionTimer := time.NewTimer(time.Duration(999999999999999999)) // wtf
@@ -286,7 +240,7 @@ func (daita *Daita) handleEvents() {
 	}
 }
 
-func (daita *Daita) handleEvent(event Event) {
+func (daita MaybenotDaita) handleEvent(event Event) {
 	cEvent := C.MaybenotEvent{
 		machine:    C.uint64_t(event.Machine),
 		event_type: C.uint32_t(event.EventType),
@@ -317,7 +271,7 @@ func (daita *Daita) handleEvent(event Event) {
 	}
 }
 
-func (daita *Daita) maybenotActionToGo(action_c C.MaybenotAction, now time.Time, peer NoisePublicKey) Action {
+func (daita MaybenotDaita) maybenotActionToGo(action_c C.MaybenotAction, now time.Time, peer NoisePublicKey) Action {
 	// TODO: support more actions
 	if action_c.tag != 1 /* INJECT_PADDING */ {
 		panic("Unsupported tag")
