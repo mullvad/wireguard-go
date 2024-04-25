@@ -136,8 +136,8 @@ impl Maybenot {
 
     pub fn on_event(
         &mut self,
-        actions: &mut [MaybeUninit<MaybenotAction>],
         event: MaybenotEvent,
+        actions: &mut [MaybeUninit<MaybenotAction>],
     ) -> Result<u64, Error> {
         let event = convert_event(event, &self.machine_id_hashes)?;
 
