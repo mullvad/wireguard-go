@@ -1,6 +1,6 @@
 [package]
 name = "cmaybenot"
-description = "A small FFI wrapper around maybenot"
+description = "A small FFI wrapper around Maybenot"
 version = "0.1.0"
 edition = "2021"
 
