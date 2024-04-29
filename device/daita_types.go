@@ -10,6 +10,10 @@ const (
 	PaddingReceived    = EventType(3)
 )
 
+// If the first byte of a packet is this, then it should be interpreted as a DAITA padding packet,
+// instead of an IP packet.
+const DaitaPaddingMarker uint8 = 0xff
+
 type Daita interface {
 	Disable()
 	Event(peer *Peer, eventType EventType, packetLen uint)
