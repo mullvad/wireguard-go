@@ -118,7 +118,7 @@ impl Maybenot {
             .map_err(|_e| Error::InvalidMachineString)?;
 
         let framework = Framework::new(
-            machines.clone(),
+            machines,
             max_padding_bytes,
             max_blocking_bytes,
             mtu,
