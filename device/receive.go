@@ -436,21 +436,43 @@ func (peer *Peer) RoutineSequentialReceiver() {
 		}
 		peer.timersDataReceived()
 
+		// Check if packet is a DAITA padding packet
+		if elem.packet[0] == DaitaPaddingMarker && daita != nil {
+			if len(elem.packet) < 3 { // TODO: constants
+				goto skip
+			}
+			field := elem.packet[1:3] // TODO: constants
+			paddingPacketLen := binary.BigEndian.Uint16(field)
+			if len(elem.packet) < int(paddingPacketLen)+3 { // TODO: constants
+				goto skip
+			}
+
+			// NOTE: Daita padding packets can have EXTRA padding when constant packet size is
+			// enabled. In either case, paddingPacketLen will be equal to the original size of the
+			// DAITA padding packet.
+			daita.Event(peer, PaddingReceived, uint(paddingPacketLen))
+			goto skip
+		}
+
 		switch elem.packet[0] >> 4 {
 		case ipv4.Version:
 			if len(elem.packet) < ipv4.HeaderLen {
 				goto skip
 			}
 			field := elem.packet[IPv4offsetTotalLength : IPv4offsetTotalLength+2]
-			length := binary.BigEndian.Uint16(field)
-			if int(length) > len(elem.packet) || int(length) < ipv4.HeaderLen {
+			totalLength := binary.BigEndian.Uint16(field)
+			if int(totalLength) > len(elem.packet) || int(totalLength) < ipv4.HeaderLen {
 				goto skip
 			}
-			elem.packet = elem.packet[:length]
+			elem.packet = elem.packet[:totalLength]
 			src := elem.packet[IPv4offsetSrc : IPv4offsetSrc+net.IPv4len]
 			if device.allowedips.Lookup(src) != peer {
 				device.log.Verbosef("IPv4 packet with disallowed source address from %v", peer)
 				goto skip
+			}
+
+			if daita != nil {
+				daita.Event(peer, NonpaddingReceived, uint(totalLength))
 			}
 
 		case ipv6.Version:
@@ -458,32 +480,25 @@ func (peer *Peer) RoutineSequentialReceiver() {
 				goto skip
 			}
 			field := elem.packet[IPv6offsetPayloadLength : IPv6offsetPayloadLength+2]
-			length := binary.BigEndian.Uint16(field)
-			length += ipv6.HeaderLen
-			if int(length) > len(elem.packet) {
+			payloadLength := binary.BigEndian.Uint16(field)
+			totalLength := payloadLength + ipv6.HeaderLen
+			if int(totalLength) > len(elem.packet) {
 				goto skip
 			}
-			elem.packet = elem.packet[:length]
+			elem.packet = elem.packet[:totalLength]
 			src := elem.packet[IPv6offsetSrc : IPv6offsetSrc+net.IPv6len]
 			if device.allowedips.Lookup(src) != peer {
 				device.log.Verbosef("IPv6 packet with disallowed source address from %v", peer)
 				goto skip
 			}
-		case 0xf:
-			// DAITA padding packet
+
 			if daita != nil {
-				daita.Event(peer, PaddingReceived, uint(len(elem.packet)))
+				daita.Event(peer, NonpaddingReceived, uint(totalLength))
 			}
-			goto skip
 
 		default:
 			device.log.Verbosef("Packet with invalid IP version from %v", peer)
 			goto skip
-		}
-
-		// TODO: Daita. is this the right place?
-		if daita != nil {
-			daita.Event(peer, NonpaddingReceived, uint(len(elem.packet)))
 		}
 
 		_, err = device.tun.device.Write(elem.buffer[:MessageTransportOffsetContent+len(elem.packet)], MessageTransportOffsetContent)
