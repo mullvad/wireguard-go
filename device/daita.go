@@ -4,6 +4,7 @@
 package device
 
 import (
+	"sync"
 	"time"
 	"unsafe"
 )
@@ -21,6 +22,7 @@ type MaybenotDaita struct {
 	newActionsBuf  []C.MaybenotAction
 	machineActions map[uint64]Action
 	logger         *Logger
+	stopping       sync.WaitGroup // waitgroup for handleEvents and HandleDaitaActions
 }
 
 type Event struct {
@@ -45,13 +47,7 @@ const (
 	ERROR_INTERMITTENT_FAILURE = -2
 )
 
-type EventContext struct {
-	peer NoisePublicKey
-}
-
 type Action struct {
-	Peer NoisePublicKey
-
 	ActionType ActionType
 
 	// The maybenot machine that generated the action.
@@ -72,12 +68,19 @@ type Padding struct {
 
 // TODO: Turn off DAITA? Remember to send a nil action when doing so
 func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapacity uint) bool {
+	peer.Lock()
+	defer peer.Unlock()
+
+	if !peer.isRunning.Load() {
+		return false
+	}
+
 	if peer.daita != nil {
 		peer.device.log.Errorf("Failed to activate DAITA as it is already active")
 		return false
 	}
 
-	peer.device.log.Verbosef("DAITA activated")
+	peer.device.log.Verbosef("Enabling DAITA for peer: %v", peer)
 	peer.device.log.Verbosef("Params: eventsCapacity=%v, actionsCapacity=%v", eventsCapacity, actionsCapacity) // TODO: Deleteme
 
 	var maybenot *C.Maybenot
@@ -103,23 +106,20 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 		logger:         peer.device.log,
 	}
 
+	daita.stopping.Add(2)
 	go daita.HandleDaitaActions(peer)
-	go daita.handleEvents()
+	go daita.handleEvents(peer)
 	peer.daita = &daita
 
 	return true
 }
 
+// Stop the MaybenotDaita instance. It must not be used after calling this.
 func (daita *MaybenotDaita) Disable() {
-	// *if* Daita has not yet been initialized before calling Daita.Close,
-	// daita will be nil.
-	if daita == nil {
-		return
-	}
-
-	close(daita.actions)
-
+	daita.logger.Verbosef("Wating for DAITA routines to stop")
 	close(daita.events)
+	daita.stopping.Wait()
+	daita.logger.Verbosef("DAITA routines have stopped")
 }
 
 func (daita *MaybenotDaita) Event(peer *Peer, eventType EventType, packetLen uint) {
@@ -144,15 +144,14 @@ func (daita *MaybenotDaita) Event(peer *Peer, eventType EventType, packetLen uin
 }
 
 func (daita *MaybenotDaita) HandleDaitaActions(peer *Peer) {
+	defer func() {
+		daita.logger.Verbosef("%v - DAITA: action handler - stopped", peer)
+		daita.stopping.Done()
+	}()
+
 	if peer == nil {
-		// TODO: error
 		return
 	}
-
-	defer func() {
-		peer.device.log.Verbosef("%v - DAITA: action handler - stopped", peer)
-		peer.stopping.Done()
-	}()
 
 	for action := range daita.actions {
 		if action.ActionType != ActionTypeInjectPadding {
@@ -181,11 +180,12 @@ func (daita *MaybenotDaita) HandleDaitaActions(peer *Peer) {
 	}
 }
 
-func (daita MaybenotDaita) handleEvents() {
-
+func (daita *MaybenotDaita) handleEvents(peer *Peer) {
 	defer func() {
 		close(daita.actions)
 		C.maybenot_stop(daita.maybenot)
+		daita.stopping.Done()
+		daita.logger.Verbosef("%v - DAITA: event handler - stopped", peer)
 	}()
 
 	// create a new inactive timer to help us track when maybenot actions should be performed.
@@ -221,7 +221,7 @@ func (daita MaybenotDaita) handleEvents() {
 			}
 
 			if !more {
-				break
+				return
 			}
 
 			daita.handleEvent(event)
@@ -235,7 +235,7 @@ func (daita MaybenotDaita) handleEvents() {
 	}
 }
 
-func (daita MaybenotDaita) handleEvent(event Event) {
+func (daita *MaybenotDaita) handleEvent(event Event) {
 	cEvent := C.MaybenotEvent{
 		machine:    C.uint64_t(event.Machine),
 		event_type: C.uint32_t(event.EventType),
@@ -266,7 +266,7 @@ func (daita MaybenotDaita) handleEvent(event Event) {
 	}
 }
 
-func (daita MaybenotDaita) maybenotActionToGo(action_c C.MaybenotAction, now time.Time, peer NoisePublicKey) Action {
+func (daita *MaybenotDaita) maybenotActionToGo(action_c C.MaybenotAction, now time.Time, peer NoisePublicKey) Action {
 	// TODO: support more actions
 	if action_c.tag != C.MaybenotAction_InjectPadding {
 		panic("Unsupported tag")
@@ -278,7 +278,6 @@ func (daita MaybenotDaita) maybenotActionToGo(action_c C.MaybenotAction, now tim
 	timeout := maybenotDurationToGoDuration(padding_action.timeout)
 
 	return Action{
-		Peer:       peer,
 		Machine:    uint64(padding_action.machine),
 		Time:       now.Add(timeout),
 		ActionType: 1, // TODO

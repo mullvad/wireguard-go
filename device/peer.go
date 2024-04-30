@@ -54,7 +54,7 @@ type Peer struct {
 	trieEntries                 list.List
 	persistentKeepaliveInterval atomic.Uint32
 
-	daita              Daita
+	daita Daita
 }
 
 func (device *Device) NewPeer(pk NoisePublicKey) (*Peer, error) {
@@ -177,7 +177,7 @@ func (peer *Peer) Start() {
 
 	// reset routine state
 	peer.stopping.Wait()
-	peer.stopping.Add(3)
+	peer.stopping.Add(2)
 
 	peer.handshake.mutex.Lock()
 	peer.handshake.lastSentHandshake = time.Now().Add(-(RekeyTimeout + time.Second))
@@ -254,10 +254,14 @@ func (peer *Peer) Stop() {
 	// Signal that RoutineSequentialSender and RoutineSequentialReceiver should exit.
 	peer.queue.inbound.c <- nil
 	peer.queue.outbound.c <- nil
+
+	if peer.daita != nil {
+		peer.daita.Disable()
+		peer.daita = nil
+	}
+
 	peer.stopping.Wait()
 	peer.device.queue.encryption.wg.Done() // no more writes to encryption queue from us
-
-	peer.daita.Disable()
 
 	peer.ZeroAndFlushAll()
 }
