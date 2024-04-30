@@ -438,12 +438,12 @@ func (peer *Peer) RoutineSequentialReceiver() {
 
 		// Check if packet is a DAITA padding packet
 		if elem.packet[0] == DaitaPaddingMarker && daita != nil {
-			if len(elem.packet) < 3 { // TODO: constants
+			if len(elem.packet) < 4 { // TODO: constants
 				goto skip
 			}
-			field := elem.packet[1:3] // TODO: constants
+			field := elem.packet[2:4] // TODO: constants
 			paddingPacketLen := binary.BigEndian.Uint16(field)
-			if len(elem.packet) < int(paddingPacketLen)+3 { // TODO: constants
+			if len(elem.packet) < int(paddingPacketLen) { // TODO: constants
 				goto skip
 			}
 
