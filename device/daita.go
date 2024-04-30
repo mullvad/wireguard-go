@@ -4,6 +4,7 @@
 package device
 
 import (
+	"encoding/binary"
 	"sync"
 	"time"
 	"unsafe"
@@ -62,6 +63,7 @@ type Action struct {
 }
 
 type Padding struct {
+	// The size of the padding packet, in bytes. NOT including the Daita header.
 	ByteCount uint16
 	Replace   bool
 }
@@ -164,16 +166,19 @@ func (daita *MaybenotDaita) HandleDaitaActions(peer *Peer) {
 		elem.padding = true
 
 		offset := MessageTransportHeaderSize
-		size := int(action.Payload.ByteCount)
+		size := action.Payload.ByteCount + DaitaHeaderLen
 
 		if size == 0 {
 			peer.device.log.Errorf("DAITA padding action contained invalid size %v bytes", size)
 			continue
 		}
 
-		elem.packet = elem.buffer[offset : offset+size]
+		// TODO: constants
+		daitaLengthField := binary.BigEndian.AppendUint16([]byte{}, size)
+		elem.packet = elem.buffer[offset : offset+int(size)]
 		elem.packet[0] = 0xff
-		// TODO: write elem.packet[2:3] = size
+		elem.packet[2] = daitaLengthField[0]
+		elem.packet[3] = daitaLengthField[1]
 
 		// TODO: fill elem
 		peer.StagePacket(elem)

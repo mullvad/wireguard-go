@@ -14,6 +14,9 @@ const (
 // instead of an IP packet.
 const DaitaPaddingMarker uint8 = 0xff
 
+// Length (in bytes) of the header of a DAITA padding packet.
+const DaitaHeaderLen uint16 = 4
+
 type Daita interface {
 	Disable()
 	Event(peer *Peer, eventType EventType, packetLen uint)
