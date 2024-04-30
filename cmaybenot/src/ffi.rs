@@ -1,6 +1,10 @@
 use crate::error::MaybenotResult;
 use crate::{Maybenot, MaybenotAction, MaybenotEvent};
-use std::{ffi::CStr, mem::MaybeUninit, slice::from_raw_parts_mut};
+use core::{
+    ffi::{c_char, CStr},
+    mem::MaybeUninit,
+    slice::from_raw_parts_mut,
+};
 
 /// Start a new [Maybenot] instance.
 ///
@@ -9,7 +13,7 @@ use std::{ffi::CStr, mem::MaybeUninit, slice::from_raw_parts_mut};
 /// - `out` must be a valid pointer to some valid pointer-sized memory.
 #[no_mangle]
 pub unsafe extern "C" fn maybenot_start(
-    machines_str: *const i8,
+    machines_str: *const c_char,
     max_padding_bytes: f64,
     max_blocking_bytes: f64,
     mtu: u16,
