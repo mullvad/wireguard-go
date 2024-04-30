@@ -176,7 +176,7 @@ func (daita *MaybenotDaita) HandleDaitaActions(peer *Peer) {
 		// TODO: constants
 		daitaLengthField := binary.BigEndian.AppendUint16([]byte{}, size)
 		elem.packet = elem.buffer[offset : offset+int(size)]
-		elem.packet[0] = 0xff
+		elem.packet[0] = DaitaPaddingMarker
 		elem.packet[2] = daitaLengthField[0]
 		elem.packet[3] = daitaLengthField[1]
 
