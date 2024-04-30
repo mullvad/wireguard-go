@@ -53,6 +53,8 @@ type Peer struct {
 	cookieGenerator             CookieGenerator
 	trieEntries                 list.List
 	persistentKeepaliveInterval atomic.Uint32
+
+	daita              Daita
 }
 
 func (device *Device) NewPeer(pk NoisePublicKey) (*Peer, error) {
@@ -175,7 +177,7 @@ func (peer *Peer) Start() {
 
 	// reset routine state
 	peer.stopping.Wait()
-	peer.stopping.Add(2)
+	peer.stopping.Add(3)
 
 	peer.handshake.mutex.Lock()
 	peer.handshake.lastSentHandshake = time.Now().Add(-(RekeyTimeout + time.Second))
@@ -254,6 +256,8 @@ func (peer *Peer) Stop() {
 	peer.queue.outbound.c <- nil
 	peer.stopping.Wait()
 	peer.device.queue.encryption.wg.Done() // no more writes to encryption queue from us
+
+	peer.daita.Disable()
 
 	peer.ZeroAndFlushAll()
 }

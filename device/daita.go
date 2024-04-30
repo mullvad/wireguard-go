@@ -15,8 +15,8 @@ import (
 import "C"
 
 type MaybenotDaita struct {
-	events         chan *Event
-	actions        chan *Action
+	events         chan Event
+	actions        chan Action
 	maybenot       *C.Maybenot
 	newActionsBuf  []C.MaybenotAction
 	machineActions map[uint64]Action
@@ -71,14 +71,14 @@ type Padding struct {
 }
 
 // TODO: Turn off DAITA? Remember to send a nil action when doing so
-func (device *Device) EnableDaita(machines string, eventsCapacity uint, actionsCapacity uint) bool {
-	if device.Daita != nil {
-		device.log.Errorf("Failed to activate DAITA as it is already active")
+func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapacity uint) bool {
+	if peer.daita != nil {
+		peer.device.log.Errorf("Failed to activate DAITA as it is already active")
 		return false
 	}
 
-	device.log.Verbosef("DAITA activated")
-	device.log.Verbosef("Params: eventsCapacity=%v, actionsCapacity=%v", eventsCapacity, actionsCapacity) // TODO: Deleteme
+	peer.device.log.Verbosef("DAITA activated")
+	peer.device.log.Verbosef("Params: eventsCapacity=%v, actionsCapacity=%v", eventsCapacity, actionsCapacity) // TODO: Deleteme
 
 	var maybenot *C.Maybenot
 	c_machines := C.CString(machines)
@@ -89,23 +89,23 @@ func (device *Device) EnableDaita(machines string, eventsCapacity uint, actionsC
 	C.free(unsafe.Pointer(c_machines))
 
 	if maybenot_result != 0 {
-		device.log.Errorf("Failed to initialize maybenot, code=%d", maybenot_result)
+		peer.device.log.Errorf("Failed to initialize maybenot, code=%d", maybenot_result)
 		return false
 	}
 
 	numMachines := C.maybenot_num_machines(maybenot)
 	daita := MaybenotDaita{
-		events:         make(chan *Event, eventsCapacity),
-		actions:        make(chan *Action, actionsCapacity),
+		events:         make(chan Event, eventsCapacity),
+		actions:        make(chan Action, actionsCapacity),
 		maybenot:       maybenot,
 		newActionsBuf:  make([]C.MaybenotAction, numMachines),
 		machineActions: map[uint64]Action{},
-		logger:         device.log,
+		logger:         peer.device.log,
 	}
 
-	go daita.HandleDaitaActions(device)
+	go daita.HandleDaitaActions(peer)
 	go daita.handleEvents()
-	device.Daita = &daita
+	peer.daita = &daita
 
 	return true
 }
@@ -117,8 +117,9 @@ func (daita *MaybenotDaita) Disable() {
 		return
 	}
 
-	daita.actions <- nil
-	daita.events <- nil
+	close(daita.actions)
+
+	close(daita.events)
 }
 
 func (daita *MaybenotDaita) Event(peer *Peer, eventType EventType, packetLen uint) {
@@ -136,36 +137,38 @@ func (daita *MaybenotDaita) Event(peer *Peer, eventType EventType, packetLen uin
 	peer.device.log.Verbosef("DAITA event: %v len=%d", eventType, packetLen)
 
 	select {
-	case daita.events <- &event:
+	case daita.events <- event:
 	default:
 		peer.device.log.Verbosef("Dropped DAITA event %v due to full buffer", event.EventType)
 	}
 }
 
-func (daita *MaybenotDaita) HandleDaitaActions(device *Device) {
-	if device == nil {
+func (daita *MaybenotDaita) HandleDaitaActions(peer *Peer) {
+	if peer == nil {
 		// TODO: error
 		return
 	}
 
+	defer func() {
+		peer.device.log.Verbosef("%v - DAITA: action handler - stopped", peer)
+		peer.stopping.Done()
+	}()
+
 	for action := range daita.actions {
-		if action == nil {
-			daita.logger.Verbosef("Closing action channel")
-			return
-		}
-		if action.ActionType != 1 {
+		if action.ActionType != ActionTypeInjectPadding {
 			daita.logger.Errorf("Got unknown action type %v", action.ActionType)
+			continue
 		}
 
-		elem := device.NewOutboundElement()
+		elem := peer.device.NewOutboundElement()
 
 		elem.padding = true
 
 		offset := MessageTransportHeaderSize
 		size := int(action.Payload.ByteCount)
 
-		if size == 0 || size > MaxContentSize {
-			device.log.Errorf("DAITA padding action contained invalid size %v bytes", size)
+		if size == 0 {
+			peer.device.log.Errorf("DAITA padding action contained invalid size %v bytes", size)
 			continue
 		}
 
@@ -173,22 +176,17 @@ func (daita *MaybenotDaita) HandleDaitaActions(device *Device) {
 		elem.packet[0] = 0xff
 		// TODO: write elem.packet[2:3] = size
 
-		peer := device.LookupPeer(action.Peer)
-		if peer == nil {
-			// TODO: Is this a proper way to handle invalid peers?
-			device.log.Errorf("Closing action channel because of invalid peer")
-			return
-		}
-
 		// TODO: fill elem
 		peer.StagePacket(elem)
-
 	}
 }
 
 func (daita MaybenotDaita) handleEvents() {
-	// TODO: proper race-condition safe nil checks for everything
-	events := daita.events
+
+	defer func() {
+		close(daita.actions)
+		C.maybenot_stop(daita.maybenot)
+	}()
 
 	// create a new inactive timer to help us track when maybenot actions should be performed.
 	actionTimer := time.NewTimer(time.Duration(999999999999999999)) // wtf
@@ -216,25 +214,23 @@ func (daita MaybenotDaita) handleEvents() {
 
 		// wait until we either get a new event, or until an action is supposed to fire
 		select {
-		case event := <-events:
+		case event, more := <-daita.events:
 			// make sure the timer is stopped and cleared
 			if nextActionMachine != nil && !actionTimer.Stop() {
 				<-actionTimer.C
 			}
 
-			if event == nil {
-				daita.logger.Errorf("No more DAITA events")
-				C.maybenot_stop(daita.maybenot)
-				return
+			if !more {
+				break
 			}
 
-			daita.handleEvent(*event)
+			daita.handleEvent(event)
 
 		case <-actionTimer.C:
 			// it's time to do the action! pop it from the map and send it to wireguard-go
 			action := daita.machineActions[*nextActionMachine]
 			delete(daita.machineActions, *nextActionMachine)
-			daita.actions <- &action
+			daita.actions <- action
 		}
 	}
 }
@@ -256,10 +252,10 @@ func (daita MaybenotDaita) handleEvent(event Event) {
 	// and `now`. Is this a problem?
 	now := time.Now()
 
-	newActions := daita.newActionsBuf[0:actionsWritten]
+	newActions := daita.newActionsBuf[:actionsWritten]
 	for _, newAction := range newActions {
 		// TODO: support more actions
-		if newAction.tag != 1 /* INJECT_PADDING */ {
+		if newAction.tag != C.MaybenotAction_InjectPadding {
 			daita.logger.Errorf("ignoring action type %d, unimplemented", newAction.tag)
 			continue
 		}
@@ -272,7 +268,7 @@ func (daita MaybenotDaita) handleEvent(event Event) {
 
 func (daita MaybenotDaita) maybenotActionToGo(action_c C.MaybenotAction, now time.Time, peer NoisePublicKey) Action {
 	// TODO: support more actions
-	if action_c.tag != 1 /* INJECT_PADDING */ {
+	if action_c.tag != C.MaybenotAction_InjectPadding {
 		panic("Unsupported tag")
 	}
 

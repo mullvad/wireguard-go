@@ -408,7 +408,7 @@ func (peer *Peer) RoutineSequentialReceiver() {
 		var err error
 		elem.Lock()
 
-		daita := device.Daita
+		daita := peer.daita
 
 		if elem.packet == nil {
 			// decryption failed

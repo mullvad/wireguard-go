@@ -87,8 +87,6 @@ type Device struct {
 	ipcMutex sync.RWMutex
 	closed   chan struct{}
 	log      *Logger
-
-	Daita Daita
 }
 
 // deviceState represents the state of a Device.
@@ -364,8 +362,6 @@ func (device *Device) Close() {
 
 	device.tun.device.Close()
 	device.downLocked()
-
-	device.Daita.Disable()
 
 	// Remove peers before closing queues,
 	// because peers assume that queues are active.
