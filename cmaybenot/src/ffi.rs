@@ -63,7 +63,7 @@ pub unsafe extern "C" fn maybenot_stop(this: *mut Maybenot) {
 /// This may generate [super::MaybenotAction]s that will be written to `actions_out`.
 ///
 /// # Safety
-/// `actions_out` must have a capacity equal to [maybenot_num_machines].
+/// `actions_out` must have capacity for [maybenot_num_machines] items of size `sizeof(MaybenotAction)` bytes.
 ///
 /// The number of actions will be written to `num_actions_out`.
 #[no_mangle]
