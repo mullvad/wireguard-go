@@ -88,7 +88,7 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 	var maybenot *C.Maybenot
 	c_machines := C.CString(machines)
 	maybenot_result := C.maybenot_start(
-		(*C.int8_t)(c_machines), 0.0, 0.0, 1440,
+		c_machines, 0.0, 0.0, 1440,
 		&maybenot,
 	)
 	C.free(unsafe.Pointer(c_machines))

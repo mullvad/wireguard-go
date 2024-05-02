@@ -142,7 +142,7 @@ typedef struct MaybenotAction {
  * - `machines_str` must be a null-terminated UTF-8 string, containing LF-separated machines.
  * - `out` must be a valid pointer to some valid pointer-sized memory.
  */
-MaybenotResult maybenot_start(const int8_t *machines_str,
+MaybenotResult maybenot_start(const char *machines_str,
                               double max_padding_bytes,
                               double max_blocking_bytes,
                               uint16_t mtu,
@@ -164,8 +164,10 @@ void maybenot_stop(struct Maybenot *this_);
 /**
  * Feed an event to the [Maybenot] instance.
  *
- * This may generate [super::MaybenotAction]s that will be written to `actions_out`,
- * which must have a capacity at least equal to [maybenot_num_machines].
+ * This may generate [super::MaybenotAction]s that will be written to `actions_out`.
+ *
+ * # Safety
+ * `actions_out` must have a capacity equal to [maybenot_num_machines].
  *
  * The number of actions will be written to `num_actions_out`.
  */
