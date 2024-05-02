@@ -8,5 +8,5 @@ edition = "2021"
 crate-type = ["lib", "staticlib", "cdylib"]
 
 [dependencies]
-maybenot = "1.1.0"
+maybenot = "1.1.1"
 thiserror = "1.0"

@@ -6,12 +6,10 @@ use std::str::Utf8Error;
 pub enum MaybenotResult {
     /// Operation completed successfully
     Ok = 0,
-
     MachineStringNotUtf8 = 1,
     InvalidMachineString = 2,
     StartFramework = 3,
-    UnknownMachine = 4,
-    NullPointer = 5,
+    NullPointer = 4,
 }
 
 #[derive(Clone, Debug, thiserror::Error)]
@@ -25,9 +23,6 @@ pub enum Error {
     #[error("Failed to start framework")]
     StartFramework,
 
-    #[error("A machine ID didn't map to a known machine")]
-    UnknownMachine,
-
     #[error("A null pointer was encountered")]
     NullPointer,
 }
@@ -38,7 +33,6 @@ impl From<Error> for MaybenotResult {
             Error::MachineStringNotUtf8(_) => MaybenotResult::MachineStringNotUtf8,
             Error::InvalidMachineString => MaybenotResult::InvalidMachineString,
             Error::StartFramework => MaybenotResult::StartFramework,
-            Error::UnknownMachine => MaybenotResult::UnknownMachine,
             Error::NullPointer => MaybenotResult::NullPointer,
         }
     }

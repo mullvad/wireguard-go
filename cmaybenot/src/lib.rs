@@ -1,8 +1,8 @@
 pub mod error;
 pub mod ffi;
 
-use core::{hash::BuildHasher, mem::MaybeUninit, str::FromStr, time::Duration};
-use std::{collections::HashMap, time::Instant};
+use core::{mem::MaybeUninit, str::FromStr, time::Duration};
+use std::time::Instant;
 
 use maybenot::{
     framework::{Framework, MachineId, TriggerEvent},
@@ -18,10 +18,6 @@ use crate::error::Error;
 /// - Stop it using [ffi::maybenot_stop].
 pub struct Maybenot {
     framework: Framework<Vec<Machine>>,
-
-    // we aren't allowed to look into MachineId, so we need our own id type to use with FFI
-    /// A map from `hash(MachineId)` to `MachineId`
-    machine_id_hashes: HashMap<u64, MachineId>,
 }
 
 #[repr(C)]
@@ -126,12 +122,7 @@ impl Maybenot {
         )
         .map_err(|_e| Error::StartFramework)?;
 
-        Ok(Maybenot {
-            framework,
-
-            // TODO: consider using a faster hasher
-            machine_id_hashes: Default::default(),
-        })
+        Ok(Maybenot { framework })
     }
 
     pub fn on_event(
@@ -139,13 +130,11 @@ impl Maybenot {
         event: MaybenotEvent,
         actions: &mut [MaybeUninit<MaybenotAction>],
     ) -> Result<u64, Error> {
-        let event = convert_event(event, &self.machine_id_hashes)?;
-
         let num_actions = self
             .framework
-            .trigger_events(&[event], Instant::now())
+            .trigger_events(&[convert_event(event)], Instant::now())
             // convert maybenot actions to repr(C) equivalents
-            .map(|action| convert_action(action, &mut self.machine_id_hashes))
+            .map(convert_action)
             // write the actions to the out buffer
             .zip(actions.iter_mut())
             .map(|(action, out)| out.write(action))
@@ -155,30 +144,11 @@ impl Maybenot {
     }
 }
 
-fn hash_machine(machine_id: MachineId, machine_id_hashes: &mut HashMap<u64, MachineId>) -> u64 {
-    let hash = machine_id_hashes.hasher().hash_one(machine_id);
-    machine_id_hashes.insert(hash, machine_id);
-    hash
-}
-
-fn machine_from_hash(
-    hash: u64,
-    machine_id_hashes: &HashMap<u64, MachineId>,
-) -> Result<MachineId, Error> {
-    machine_id_hashes
-        .get(&hash)
-        .copied()
-        .ok_or(Error::UnknownMachine)
-}
-
 /// Convert an action from [maybenot] to our own `repr(C)` action type.
-fn convert_action(
-    action: &maybenot::framework::Action,
-    machine_id_hashes: &mut HashMap<u64, MachineId>,
-) -> MaybenotAction {
+fn convert_action(action: &maybenot::framework::Action) -> MaybenotAction {
     match *action {
         maybenot::framework::Action::Cancel { machine } => MaybenotAction::Cancel {
-            machine: hash_machine(machine, machine_id_hashes),
+            machine: machine.into_raw().try_into().unwrap(),
         },
         maybenot::framework::Action::InjectPadding {
             timeout,
@@ -191,7 +161,7 @@ fn convert_action(
             size,
             replace,
             bypass,
-            machine: hash_machine(machine, machine_id_hashes),
+            machine: machine.into_raw().try_into().unwrap(),
         },
         maybenot::framework::Action::BlockOutgoing {
             timeout,
@@ -204,16 +174,13 @@ fn convert_action(
             duration: duration.into(),
             replace,
             bypass,
-            machine: hash_machine(machine, machine_id_hashes),
+            machine: machine.into_raw().try_into().unwrap(),
         },
     }
 }
 
-fn convert_event(
-    event: MaybenotEvent,
-    machine_id_hashes: &HashMap<u64, MachineId>,
-) -> Result<TriggerEvent, Error> {
-    Ok(match event.event_type {
+fn convert_event(event: MaybenotEvent) -> TriggerEvent {
+    match event.event_type {
         MaybenotEventType::NonpaddingSent => TriggerEvent::NonPaddingSent {
             bytes_sent: event.xmit_bytes,
         },
@@ -222,12 +189,12 @@ fn convert_event(
         },
         MaybenotEventType::PaddingSent => TriggerEvent::PaddingSent {
             bytes_sent: event.xmit_bytes,
-            machine: machine_from_hash(event.machine, machine_id_hashes)?,
+            machine: MachineId::from_raw(event.machine.try_into().unwrap()),
         },
         MaybenotEventType::PaddingReceived => TriggerEvent::PaddingRecv {
             bytes_recv: event.xmit_bytes,
         },
-    })
+    }
 }
 
 impl From<Duration> for MaybenotDuration {
