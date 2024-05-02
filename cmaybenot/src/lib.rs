@@ -129,7 +129,7 @@ impl Maybenot {
         &mut self,
         event: MaybenotEvent,
         actions: &mut [MaybeUninit<MaybenotAction>],
-    ) -> Result<u64, Error> {
+    ) -> usize {
         let num_actions = self
             .framework
             .trigger_events(&[convert_event(event)], Instant::now())
@@ -140,7 +140,7 @@ impl Maybenot {
             .map(|(action, out)| out.write(action))
             .count();
 
-        Ok(num_actions as u64)
+        num_actions
     }
 }
 

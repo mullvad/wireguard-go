@@ -84,11 +84,7 @@ pub unsafe extern "C" fn maybenot_on_event(
     let actions: &mut [MaybeUninit<MaybenotAction>] =
         unsafe { from_raw_parts_mut(actions_out, this.framework.num_machines()) };
 
-    match this.on_event(event, actions) {
-        Ok(num_actions) => {
-            unsafe { num_actions_out.write(num_actions) };
-            MaybenotResult::Ok
-        }
-        Err(_) => MaybenotResult::UnknownMachine,
-    }
+    let num_actions = this.on_event(event, actions).try_into().unwrap();
+    unsafe { num_actions_out.write(num_actions) };
+    MaybenotResult::Ok
 }
