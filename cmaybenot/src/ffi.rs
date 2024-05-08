@@ -1,5 +1,4 @@
-use crate::error::MaybenotResult;
-use crate::{Maybenot, MaybenotAction, MaybenotEvent};
+use crate::{error::MaybenotResult, Maybenot, MaybenotAction, MaybenotEvent};
 use core::{
     ffi::{c_char, CStr},
     mem::MaybeUninit,
@@ -63,7 +62,8 @@ pub unsafe extern "C" fn maybenot_stop(this: *mut Maybenot) {
 /// This may generate [super::MaybenotAction]s that will be written to `actions_out`.
 ///
 /// # Safety
-/// `actions_out` must have capacity for [maybenot_num_machines] items of size `sizeof(MaybenotAction)` bytes.
+/// `actions_out` must have capacity for [maybenot_num_machines] items of size
+/// `sizeof(MaybenotAction)` bytes.
 ///
 /// The number of actions will be written to `num_actions_out`.
 #[no_mangle]
