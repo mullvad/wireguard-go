@@ -38,6 +38,10 @@ pub unsafe extern "C" fn maybenot_start(
 }
 
 /// Get the number of machines running in the [Maybenot] instance.
+///
+/// # Safety
+///
+/// `this` must be a valid pointer to a [`Maybenot`] instance
 #[no_mangle]
 pub unsafe extern "C" fn maybenot_num_machines(this: *mut Maybenot) -> u64 {
     let this =
