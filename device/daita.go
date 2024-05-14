@@ -12,14 +12,14 @@ import (
 
 // #include <stdio.h>
 // #include <stdlib.h>
-// #include "../cmaybenot/cmaybenot.h"
-// #cgo LDFLAGS: -L${SRCDIR}/../cmaybenot/target/release -l:libcmaybenot.a -lm
+// #include "../maybenot/crates/maybenot-ffi/maybenot.h"
+// #cgo LDFLAGS: -L${SRCDIR}/../maybenot/crates/maybenot-ffi -l:libmaybenot.a -lm
 import "C"
 
 type MaybenotDaita struct {
 	events        chan Event
 	actions       chan Action
-	maybenot      *C.Maybenot
+	maybenot      *C.MaybenotFramework
 	newActionsBuf []C.MaybenotAction
 	paddingQueue  map[uint64]*time.Timer // Map from machine to queued padding packets
 	logger        *Logger
@@ -90,7 +90,7 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 		return false
 	}
 	peer.device.log.Verbosef("MTU %v", mtu)
-	var maybenot *C.Maybenot
+	var maybenot *C.MaybenotFramework
 	c_machines := C.CString(machines)
 	maxPaddingBytes := C.double(0.0)  // TODO: set from args
 	maxBlockingBytes := C.double(0.0) // TODO: set from args
@@ -263,16 +263,16 @@ func (daita *MaybenotDaita) handleEvent(event Event, peer *Peer) {
 
 func (daita *MaybenotDaita) maybenotEventToActions(event Event) []C.MaybenotAction {
 	cEvent := C.MaybenotEvent{
-		machine:    C.uint64_t(event.Machine),
+		machine:    C.uintptr_t(event.Machine),
 		event_type: C.uint32_t(event.EventType),
 		xmit_bytes: C.uint16_t(event.XmitBytes),
 	}
 
-	var actionsWritten C.uint64_t
+	var actionsWritten C.uintptr_t
 
 	// TODO: use unsafe.SliceData instead of the pointer dereference when the Go version gets bumped to 1.20 or later
 	// TODO: fetch an error string from the FFI corresponding to the error code
-	result := C.maybenot_on_event(daita.maybenot, cEvent, &daita.newActionsBuf[0], &actionsWritten)
+	result := C.maybenot_on_events(daita.maybenot, &cEvent, 1, &daita.newActionsBuf[0], &actionsWritten)
 	if result != 0 {
 		daita.logger.Errorf("Failed to handle event as it was a null pointer\nEvent: %d\n", event)
 		return nil
