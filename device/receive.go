@@ -450,7 +450,7 @@ func (peer *Peer) RoutineSequentialReceiver() {
 			// NOTE: Daita padding packets can have EXTRA padding when constant packet size is
 			// enabled. In either case, paddingPacketLen will be equal to the original size of the
 			// DAITA padding packet.
-			daita.Event(peer, PaddingReceived, uint(paddingPacketLen))
+			daita.PaddingReceived(peer, uint(paddingPacketLen))
 			goto skip
 		}
 
@@ -472,7 +472,7 @@ func (peer *Peer) RoutineSequentialReceiver() {
 			}
 
 			if daita != nil {
-				daita.Event(peer, NonpaddingReceived, uint(totalLength))
+				daita.NonpaddingReceived(peer, uint(totalLength))
 			}
 
 		case ipv6.Version:
@@ -493,7 +493,7 @@ func (peer *Peer) RoutineSequentialReceiver() {
 			}
 
 			if daita != nil {
-				daita.Event(peer, NonpaddingReceived, uint(totalLength))
+				daita.NonpaddingReceived(peer, uint(totalLength))
 			}
 
 		default:

@@ -45,12 +45,13 @@ import (
 
 type QueueOutboundElement struct {
 	sync.Mutex
-	buffer  *[MaxMessageSize]byte // slice holding the packet data
-	packet  []byte                // slice of "buffer" (always!)
-	nonce   uint64                // nonce for encryption
-	keypair *Keypair              // keypair for encryption
-	peer    *Peer                 // related peer
-	padding bool
+	buffer     *[MaxMessageSize]byte // slice holding the packet data
+	packet     []byte                // slice of "buffer" (always!)
+	nonce      uint64                // nonce for encryption
+	keypair    *Keypair              // keypair for encryption
+	peer       *Peer                 // related peer
+	padding    bool
+	machine_id *uint64
 }
 
 func (device *Device) NewOutboundElement() *QueueOutboundElement {
@@ -58,7 +59,9 @@ func (device *Device) NewOutboundElement() *QueueOutboundElement {
 	elem.buffer = device.GetMessageBuffer()
 	elem.Mutex = sync.Mutex{}
 	elem.nonce = 0
+	// TODO: these are both default, right? Maybe we scan just leave them out
 	elem.padding = false
+	elem.machine_id = nil
 	// keypair and peer were cleared (if necessary) by clearPointers.
 	return elem
 }
@@ -450,9 +453,13 @@ func (peer *Peer) RoutineSequentialSender() {
 		daita := peer.daita
 		if daita != nil {
 			if elem.padding {
-				daita.Event(peer, PaddingSent, uint(len(elem.packet)))
+				if elem.machine_id == nil {
+					device.log.Errorf("Machine ID missing for PaddingSent event")
+				} else {
+					daita.PaddingSent(peer, uint(len(elem.packet)), *elem.machine_id)
+				}
 			} else {
-				daita.Event(peer, NonpaddingSent, uint(len(elem.packet)))
+				daita.NonpaddingSent(peer, uint(len(elem.packet)))
 			}
 		}
 

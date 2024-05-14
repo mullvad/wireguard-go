@@ -19,7 +19,10 @@ const DaitaHeaderLen uint16 = 4
 
 type Daita interface {
 	Disable()
-	Event(peer *Peer, eventType EventType, packetLen uint)
+	NonpaddingSent(peer *Peer, packetLen uint)
+	NonpaddingReceived(peer *Peer, packetLen uint)
+	PaddingSent(peer *Peer, packetLen uint, machine_id uint64)
+	PaddingReceived(peer *Peer, packetLen uint)
 }
 
 func (event EventType) String() string {

@@ -124,18 +124,35 @@ func (daita *MaybenotDaita) Disable() {
 	daita.logger.Verbosef("DAITA routines have stopped")
 }
 
-func (daita *MaybenotDaita) Event(peer *Peer, eventType EventType, packetLen uint) {
+func (daita *MaybenotDaita) NonpaddingReceived(peer *Peer, packetLen uint) {
+	daita.event(peer, NonpaddingReceived, packetLen, 0)
+}
+
+func (daita *MaybenotDaita) PaddingReceived(peer *Peer, packetLen uint) {
+	daita.event(peer, PaddingReceived, packetLen, 0)
+}
+
+func (daita *MaybenotDaita) PaddingSent(peer *Peer, packetLen uint, machine uint64) {
+	daita.event(peer, PaddingSent, packetLen, machine)
+}
+
+func (daita *MaybenotDaita) NonpaddingSent(peer *Peer, packetLen uint) {
+	daita.event(peer, NonpaddingSent, packetLen, 0)
+}
+
+func (daita *MaybenotDaita) event(peer *Peer, eventType EventType, packetLen uint, machine uint64) {
 	if daita == nil {
 		return
 	}
 
 	event := Event{
-		// TODO: am i really copying the array?
+		Machine:   machine,
 		Peer:      peer.handshake.remoteStatic,
 		EventType: eventType,
 		XmitBytes: uint16(packetLen),
 	}
 
+	// TODO: stringify Event
 	peer.device.log.Verbosef("DAITA event: %v len=%d", eventType, packetLen)
 
 	select {
@@ -164,6 +181,7 @@ func (daita *MaybenotDaita) HandleDaitaActions(peer *Peer) {
 		elem := peer.device.NewOutboundElement()
 
 		elem.padding = true
+		elem.machine_id = &action.Machine
 
 		offset := MessageTransportHeaderSize
 		size := action.Payload.ByteCount + DaitaHeaderLen
@@ -180,7 +198,6 @@ func (daita *MaybenotDaita) HandleDaitaActions(peer *Peer) {
 		elem.packet[2] = daitaLengthField[0]
 		elem.packet[3] = daitaLengthField[1]
 
-		// TODO: fill elem
 		peer.StagePacket(elem)
 	}
 }
