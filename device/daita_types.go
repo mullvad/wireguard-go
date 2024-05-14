@@ -2,7 +2,7 @@ package device
 
 type EventType uint32
 
-// NOTE: discriminants must be kept in sync with `MaybenotEventType` in cmaybenot.h
+// NOTE: discriminants must be kept in sync with `MaybenotEventType` in maybenot-ffi/maybenot.h
 const (
 	NonpaddingSent     = EventType(0)
 	NonpaddingReceived = EventType(1)
