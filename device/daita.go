@@ -68,7 +68,6 @@ type Padding struct {
 	Replace   bool
 }
 
-// TODO: Turn off DAITA? Remember to send a nil action when doing so
 func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapacity uint) bool {
 	peer.Lock()
 	defer peer.Unlock()
@@ -278,13 +277,13 @@ func (daita *MaybenotDaita) handleEvent(event Event) {
 			continue
 		}
 
-		newActionGo := daita.maybenotActionToGo(newAction, now, event.Peer)
+		newActionGo := daita.maybenotActionToGo(newAction, now)
 		machine := newActionGo.Machine
 		daita.machineActions[machine] = newActionGo
 	}
 }
 
-func (daita *MaybenotDaita) maybenotActionToGo(action_c C.MaybenotAction, now time.Time, peer NoisePublicKey) Action {
+func (daita *MaybenotDaita) maybenotActionToGo(action_c C.MaybenotAction, now time.Time) Action {
 	// TODO: support more actions
 	if action_c.tag != C.MaybenotAction_InjectPadding {
 		panic("Unsupported tag")
