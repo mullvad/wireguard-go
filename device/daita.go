@@ -119,7 +119,6 @@ func (daita *MaybenotDaita) Close() {
 	close(daita.events)
 	for _, queuedPadding := range daita.machineQueuedPaddingPackets {
 		if queuedPadding.Stop() {
-			daita.logger.Verbosef("daita.stopping.Done()")
 			daita.stopping.Done()
 		}
 	}
@@ -223,7 +222,6 @@ func (daita *MaybenotDaita) handleEvent(event Event, peer *Peer) {
 			// If padding is queued for the machine, cancel it
 			if queuedPadding, ok := daita.machineQueuedPaddingPackets[machine]; ok {
 				if queuedPadding.Stop() {
-					daita.logger.Verbosef("daita.stopping.Done()")
 					daita.stopping.Done()
 				}
 			}
@@ -231,29 +229,24 @@ func (daita *MaybenotDaita) handleEvent(event Event, peer *Peer) {
 			machine := action.Machine
 			timeUntilAction := action.Time.Sub(now)
 
-			// If padding is queued for the machine, cancel it
-			if queuedPadding, ok := daita.machineQueuedPaddingPackets[machine]; ok {
-				if queuedPadding.Stop() {
-					daita.logger.Verbosef("daita.stopping.Done()")
-					daita.stopping.Done()
-				}
+			// Check if a padding packet was already queued for the machine
+			// If so, try to cancel it
+			timer, paddingWasQueued := daita.machineQueuedPaddingPackets[machine]
+			// If no padding was queued, or the action fire before we manage to
+			// cancel it, we need to increment the wait group again
+			if !paddingWasQueued || !timer.Stop() {
+				daita.stopping.Add(1)
 			}
 
-			daita.stopping.Add(1)
-			daita.logger.Verbosef("daita.stopping.Add(1)")
 			daita.machineQueuedPaddingPackets[machine] =
 				time.AfterFunc(timeUntilAction, func() {
-					defer func() {
-						daita.logger.Verbosef("daita.stopping.Done()")
-						daita.stopping.Done()
-					}()
+					defer daita.stopping.Done()
 					injectPadding(action, peer)
 				})
 		case ActionTypeBlockOutgoing:
 			daita.logger.Errorf("ignoring action type ActionTypeBlockOutgoing, unimplemented")
 			continue
 		}
-
 	}
 }
 
