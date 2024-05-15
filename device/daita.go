@@ -100,15 +100,13 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 	numMachines := C.maybenot_num_machines(maybenot)
 	daita := MaybenotDaita{
 		events:                      make(chan Event, eventsCapacity),
-		actions:                     make(chan Action, actionsCapacity),
 		maybenot:                    maybenot,
 		newActionsBuf:               make([]C.MaybenotAction, numMachines),
 		machineQueuedPaddingPackets: map[uint64]*time.Timer{},
 		logger:                      peer.device.log,
 	}
 
-	daita.stopping.Add(2)
-	go daita.HandleDaitaActions(peer)
+	daita.stopping.Add(1)
 	go daita.handleEvents(peer)
 	peer.daita = &daita
 
@@ -164,45 +162,33 @@ func (daita *MaybenotDaita) event(peer *Peer, eventType EventType, packetLen uin
 	}
 }
 
-func (daita *MaybenotDaita) HandleDaitaActions(peer *Peer) {
-	defer func() {
-		daita.logger.Verbosef("%v - DAITA: action handler - stopped", peer)
-		daita.stopping.Done()
-	}()
-
-	if peer == nil {
+func injectPadding(action Action, peer *Peer) {
+	if action.ActionType != ActionTypeInjectPadding {
+		peer.device.log.Errorf("Got unknown action type %v", action.ActionType)
 		return
 	}
 
-	for action := range daita.actions {
-		if action.ActionType != ActionTypeInjectPadding {
-			daita.logger.Errorf("Got unknown action type %v", action.ActionType)
-			continue
-		}
+	elem := peer.device.NewOutboundElement()
 
-		elem := peer.device.NewOutboundElement()
+	elem.padding = true
+	elem.machine_id = &action.Machine
 
-		elem.padding = true
-		elem.machine_id = &action.Machine
-
-		size := action.Payload.ByteCount + DaitaHeaderLen
-		if size == 0 {
-			peer.device.log.Errorf("DAITA padding action contained invalid size %v bytes", size)
-			continue
-		}
-
-		elem.packet = elem.buffer[MessageTransportHeaderSize : MessageTransportHeaderSize+int(size)]
-		elem.packet[0] = DaitaPaddingMarker
-		daitaLengthField := binary.BigEndian.AppendUint16([]byte{}, size)
-		copy(elem.packet[DaitaOffsetTotalLength:DaitaOffsetTotalLength+2], daitaLengthField)
-
-		peer.StagePacket(elem)
+	size := action.Payload.ByteCount + DaitaHeaderLen
+	if size == 0 {
+		peer.device.log.Errorf("DAITA padding action contained invalid size %v bytes", size)
+		return
 	}
+
+	elem.packet = elem.buffer[MessageTransportHeaderSize : MessageTransportHeaderSize+int(size)]
+	elem.packet[0] = DaitaPaddingMarker
+	daitaLengthField := binary.BigEndian.AppendUint16([]byte{}, size)
+	copy(elem.packet[DaitaOffsetTotalLength:DaitaOffsetTotalLength+2], daitaLengthField)
+
+	peer.StagePacket(elem)
 }
 
 func (daita *MaybenotDaita) handleEvents(peer *Peer) {
 	defer func() {
-		close(daita.actions)
 		C.maybenot_stop(daita.maybenot)
 		daita.stopping.Done()
 		daita.logger.Verbosef("%v - DAITA: event handler - stopped", peer)
@@ -214,11 +200,11 @@ func (daita *MaybenotDaita) handleEvents(peer *Peer) {
 			return
 		}
 
-		daita.handleEvent(event)
+		daita.handleEvent(event, peer)
 	}
 }
 
-func (daita *MaybenotDaita) handleEvent(event Event) {
+func (daita *MaybenotDaita) handleEvent(event Event, peer *Peer) {
 	cEvent := C.MaybenotEvent{
 		machine:    C.uint64_t(event.Machine),
 		event_type: C.uint32_t(event.EventType),
@@ -234,11 +220,11 @@ func (daita *MaybenotDaita) handleEvent(event Event) {
 		daita.logger.Errorf("Failed to handle event as it was a null pointer\nEvent: %d\n", event)
 	}
 
+	newActions := daita.newActionsBuf[:actionsWritten]
+
 	// TODO: there is a small disparity here, between the time used by maybenot_on_event,
 	// and `now`. Is this a problem?
 	now := time.Now()
-
-	newActions := daita.newActionsBuf[:actionsWritten]
 	for _, newAction := range newActions {
 		action := daita.maybenotActionToGo(newAction, now)
 
@@ -260,7 +246,9 @@ func (daita *MaybenotDaita) handleEvent(event Event) {
 
 			daita.machineQueuedPaddingPackets[machine] =
 				time.AfterFunc(timeUntilAction, func() {
-					daita.actions <- action
+					daita.stopping.Add(1)
+					defer daita.stopping.Done()
+					injectPadding(action, peer)
 				})
 		case ActionTypeBlockOutgoing:
 			daita.logger.Errorf("ignoring action type ActionTypeBlockOutgoing, unimplemented")
