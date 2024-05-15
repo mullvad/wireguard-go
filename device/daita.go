@@ -246,7 +246,7 @@ func (daita *MaybenotDaita) handleEvent(event Event, peer *Peer) {
 	}
 }
 
-func (daita *MaybenotDaita) maybenotEventToActions(event Event) []_Ctype_struct_MaybenotAction {
+func (daita *MaybenotDaita) maybenotEventToActions(event Event) []C.MaybenotAction {
 	cEvent := C.MaybenotEvent{
 		machine:    C.uint64_t(event.Machine),
 		event_type: C.uint32_t(event.EventType),
