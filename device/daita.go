@@ -17,13 +17,13 @@ import (
 import "C"
 
 type MaybenotDaita struct {
-	events                      chan Event
-	actions                     chan Action
-	maybenot                    *C.Maybenot
-	newActionsBuf               []C.MaybenotAction
-	machineQueuedPaddingPackets map[uint64]*time.Timer
-	logger                      *Logger
-	stopping                    sync.WaitGroup // waitgroup for handleEvents and HandleDaitaActions
+	events        chan Event
+	actions       chan Action
+	maybenot      *C.Maybenot
+	newActionsBuf []C.MaybenotAction
+	paddingQueue  map[uint64]*time.Timer // Map from machine to queued padding packets
+	logger        *Logger
+	stopping      sync.WaitGroup // waitgroup for handleEvents and HandleDaitaActions
 }
 
 type Event struct {
@@ -56,7 +56,7 @@ type Action struct {
 	Machine uint64
 
 	// The time at which the action should be performed
-	Time time.Time
+	Timeout time.Duration
 
 	// TODO: Support more action types than ActionTypeInjectPadding
 	Payload Padding
@@ -99,11 +99,11 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 
 	numMachines := C.maybenot_num_machines(maybenot)
 	daita := MaybenotDaita{
-		events:                      make(chan Event, eventsCapacity),
-		maybenot:                    maybenot,
-		newActionsBuf:               make([]C.MaybenotAction, numMachines),
-		machineQueuedPaddingPackets: map[uint64]*time.Timer{},
-		logger:                      peer.device.log,
+		events:        make(chan Event, eventsCapacity),
+		maybenot:      maybenot,
+		newActionsBuf: make([]C.MaybenotAction, numMachines),
+		paddingQueue:  map[uint64]*time.Timer{},
+		logger:        peer.device.log,
 	}
 
 	daita.stopping.Add(1)
@@ -117,7 +117,7 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 func (daita *MaybenotDaita) Close() {
 	daita.logger.Verbosef("Waiting for DAITA routines to stop")
 	close(daita.events)
-	for _, queuedPadding := range daita.machineQueuedPaddingPackets {
+	for _, queuedPadding := range daita.paddingQueue {
 		if queuedPadding.Stop() {
 			daita.stopping.Done()
 		}
@@ -208,38 +208,30 @@ func (daita *MaybenotDaita) handleEvents(peer *Peer) {
 
 func (daita *MaybenotDaita) handleEvent(event Event, peer *Peer) {
 
-	newActions := daita.maybenotEventToActions(event)
-
-	// TODO: there is a small disparity here, between the time used by maybenot_on_event,
-	// and `now`. Is this a problem?
-	now := time.Now()
-	for _, newAction := range newActions {
-		action := daita.maybenotActionToGo(newAction, now)
+	for _, cAction := range daita.maybenotEventToActions(event) {
+		action := cActionToGo(cAction)
 
 		switch action.ActionType {
 		case ActionTypeCancel:
 			machine := action.Machine
 			// If padding is queued for the machine, cancel it
-			if queuedPadding, ok := daita.machineQueuedPaddingPackets[machine]; ok {
+			if queuedPadding, ok := daita.paddingQueue[machine]; ok {
 				if queuedPadding.Stop() {
 					daita.stopping.Done()
 				}
 			}
 		case ActionTypeInjectPadding:
-			machine := action.Machine
-			timeUntilAction := action.Time.Sub(now)
-
 			// Check if a padding packet was already queued for the machine
 			// If so, try to cancel it
-			timer, paddingWasQueued := daita.machineQueuedPaddingPackets[machine]
+			timer, paddingWasQueued := daita.paddingQueue[action.Machine]
 			// If no padding was queued, or the action fire before we manage to
 			// cancel it, we need to increment the wait group again
 			if !paddingWasQueued || !timer.Stop() {
 				daita.stopping.Add(1)
 			}
 
-			daita.machineQueuedPaddingPackets[machine] =
-				time.AfterFunc(timeUntilAction, func() {
+			daita.paddingQueue[action.Machine] =
+				time.AfterFunc(action.Timeout, func() {
 					defer daita.stopping.Done()
 					injectPadding(action, peer)
 				})
@@ -271,7 +263,7 @@ func (daita *MaybenotDaita) maybenotEventToActions(event Event) []C.MaybenotActi
 	return newActions
 }
 
-func (daita *MaybenotDaita) maybenotActionToGo(action_c C.MaybenotAction, now time.Time) Action {
+func cActionToGo(action_c C.MaybenotAction) Action {
 	// TODO: support more actions
 	if action_c.tag != C.MaybenotAction_InjectPadding {
 		panic("Unsupported tag")
@@ -284,7 +276,7 @@ func (daita *MaybenotDaita) maybenotActionToGo(action_c C.MaybenotAction, now ti
 
 	return Action{
 		Machine:    uint64(padding_action.machine),
-		Time:       now.Add(timeout),
+		Timeout:    timeout,
 		ActionType: 1, // TODO
 		Payload: Padding{
 			ByteCount: uint16(padding_action.size),
