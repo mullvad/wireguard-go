@@ -205,22 +205,8 @@ func (daita *MaybenotDaita) handleEvents(peer *Peer) {
 }
 
 func (daita *MaybenotDaita) handleEvent(event Event, peer *Peer) {
-	cEvent := C.MaybenotEvent{
-		machine:    C.uint64_t(event.Machine),
-		event_type: C.uint32_t(event.EventType),
-		xmit_bytes: C.uint16_t(event.XmitBytes),
-	}
 
-	var actionsWritten C.uint64_t
-
-	// TODO: use unsafe.SliceData instead of the pointer dereference when the Go version gets bumped to 1.20 or later
-	result := C.maybenot_on_event(daita.maybenot, cEvent, &daita.newActionsBuf[0], &actionsWritten)
-	if result != 0 {
-		// TODO: fetch an error string from the FFI corresponding to the error code
-		daita.logger.Errorf("Failed to handle event as it was a null pointer\nEvent: %d\n", event)
-	}
-
-	newActions := daita.newActionsBuf[:actionsWritten]
+	newActions := daita.maybenotEventToActions(event)
 
 	// TODO: there is a small disparity here, between the time used by maybenot_on_event,
 	// and `now`. Is this a problem?
@@ -256,6 +242,27 @@ func (daita *MaybenotDaita) handleEvent(event Event, peer *Peer) {
 		}
 
 	}
+}
+
+func (daita *MaybenotDaita) maybenotEventToActions(event Event) []_Ctype_struct_MaybenotAction {
+	cEvent := C.MaybenotEvent{
+		machine:    C.uint64_t(event.Machine),
+		event_type: C.uint32_t(event.EventType),
+		xmit_bytes: C.uint16_t(event.XmitBytes),
+	}
+
+	var actionsWritten C.uint64_t
+
+	// TODO: use unsafe.SliceData instead of the pointer dereference when the Go version gets bumped to 1.20 or later
+	// TODO: fetch an error string from the FFI corresponding to the error code
+	result := C.maybenot_on_event(daita.maybenot, cEvent, &daita.newActionsBuf[0], &actionsWritten)
+	if result != 0 {
+
+		daita.logger.Errorf("Failed to handle event as it was a null pointer\nEvent: %d\n", event)
+	}
+
+	newActions := daita.newActionsBuf[:actionsWritten]
+	return newActions
 }
 
 func (daita *MaybenotDaita) maybenotActionToGo(action_c C.MaybenotAction, now time.Time) Action {
