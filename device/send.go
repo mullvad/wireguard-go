@@ -59,9 +59,6 @@ func (device *Device) NewOutboundElement() *QueueOutboundElement {
 	elem.buffer = device.GetMessageBuffer()
 	elem.Mutex = sync.Mutex{}
 	elem.nonce = 0
-	// TODO: these are both default, right? Maybe we scan just leave them out
-	elem.padding = false
-	elem.machine_id = nil
 	// keypair and peer were cleared (if necessary) by clearPointers.
 	return elem
 }
@@ -449,7 +446,6 @@ func (peer *Peer) RoutineSequentialSender() {
 			peer.timersDataSent()
 		}
 
-		// TODO: Is this the correct place?
 		daita := peer.daita
 		if daita != nil {
 			if elem.padding {
