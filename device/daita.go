@@ -261,9 +261,12 @@ func (daita *MaybenotDaita) handleEvent(event Event) {
 
 	var actionsWritten C.uint64_t
 
-	// TODO: is it even sound to pass a slice reference like this?
-	// TODO: handle error
-	C.maybenot_on_event(daita.maybenot, cEvent, &daita.newActionsBuf[0], &actionsWritten)
+	// TODO: use unsafe.SliceData instead of the pointer dereference when the Go version gets bumped to 1.20 or later
+	result := C.maybenot_on_event(daita.maybenot, cEvent, &daita.newActionsBuf[0], &actionsWritten)
+	if result != 0 {
+		// TODO: fetch an error string from the FFI corresponding to the error code
+		daita.logger.Errorf("Failed to handle event as it was a null pointer\nEvent: %d\n", event)
+	}
 
 	// TODO: there is a small disparity here, between the time used by maybenot_on_event,
 	// and `now`. Is this a problem?
