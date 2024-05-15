@@ -260,10 +260,7 @@ func (daita *MaybenotDaita) handleEvent(event Event) {
 
 			daita.machineQueuedPaddingPackets[machine] =
 				time.AfterFunc(timeUntilAction, func() {
-					select {
-					case daita.actions <- action:
-					default:
-					}
+					daita.actions <- action
 				})
 		case ActionTypeBlockOutgoing:
 			daita.logger.Errorf("ignoring action type ActionTypeBlockOutgoing, unimplemented")
