@@ -117,8 +117,8 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 }
 
 // Stop the MaybenotDaita instance. It must not be used after calling this.
-func (daita *MaybenotDaita) Disable() {
-	daita.logger.Verbosef("Wating for DAITA routines to stop")
+func (daita *MaybenotDaita) Close() {
+	daita.logger.Verbosef("Waiting for DAITA routines to stop")
 	close(daita.events)
 	daita.stopping.Wait()
 	daita.logger.Verbosef("DAITA routines have stopped")

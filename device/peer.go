@@ -256,7 +256,7 @@ func (peer *Peer) Stop() {
 	peer.queue.outbound.c <- nil
 
 	if peer.daita != nil {
-		peer.daita.Disable()
+		peer.daita.Close()
 		peer.daita = nil
 	}
 

@@ -18,7 +18,7 @@ const DaitaPaddingMarker uint8 = 0xff
 const DaitaHeaderLen uint16 = 4
 
 type Daita interface {
-	Disable()
+	Close()
 	NonpaddingSent(peer *Peer, packetLen uint)
 	NonpaddingReceived(peer *Peer, packetLen uint)
 	PaddingSent(peer *Peer, packetLen uint, machine_id uint64)
