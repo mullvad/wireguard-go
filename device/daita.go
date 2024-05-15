@@ -183,20 +183,16 @@ func (daita *MaybenotDaita) HandleDaitaActions(peer *Peer) {
 		elem.padding = true
 		elem.machine_id = &action.Machine
 
-		offset := MessageTransportHeaderSize
 		size := action.Payload.ByteCount + DaitaHeaderLen
-
 		if size == 0 {
 			peer.device.log.Errorf("DAITA padding action contained invalid size %v bytes", size)
 			continue
 		}
 
-		// TODO: constants
-		daitaLengthField := binary.BigEndian.AppendUint16([]byte{}, size)
-		elem.packet = elem.buffer[offset : offset+int(size)]
+		elem.packet = elem.buffer[MessageTransportHeaderSize : MessageTransportHeaderSize+int(size)]
 		elem.packet[0] = DaitaPaddingMarker
-		elem.packet[2] = daitaLengthField[0]
-		elem.packet[3] = daitaLengthField[1]
+		daitaLengthField := binary.BigEndian.AppendUint16([]byte{}, size)
+		copy(elem.packet[DaitaOffsetTotalLength:DaitaOffsetTotalLength+2], daitaLengthField)
 
 		peer.StagePacket(elem)
 	}

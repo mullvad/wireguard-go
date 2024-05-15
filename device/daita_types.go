@@ -10,12 +10,17 @@ const (
 	PaddingReceived    = EventType(3)
 )
 
-// If the first byte of a packet is this, then it should be interpreted as a DAITA padding packet,
-// instead of an IP packet.
-const DaitaPaddingMarker uint8 = 0xff
+const (
+	// Length (in bytes) of the header of a DAITA padding packet.
+	DaitaHeaderLen uint16 = 4
 
-// Length (in bytes) of the header of a DAITA padding packet.
-const DaitaHeaderLen uint16 = 4
+	// The first byte of the header, taking the place of the IP version field, is the DAITA marker.
+	// This is used to differentiate DAITA padding packets from IP packets.
+	DaitaPaddingMarker uint8 = 0xff
+
+	// Offset (in bytes) before the 16 bit packet length field in the DAITA header
+	DaitaOffsetTotalLength uint16 = 2
+)
 
 type Daita interface {
 	Close()
