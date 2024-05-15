@@ -17,13 +17,13 @@ import (
 import "C"
 
 type MaybenotDaita struct {
-	events         chan Event
-	actions        chan Action
-	maybenot       *C.Maybenot
-	newActionsBuf  []C.MaybenotAction
-	machineActions map[uint64]Action
-	logger         *Logger
-	stopping       sync.WaitGroup // waitgroup for handleEvents and HandleDaitaActions
+	events                      chan Event
+	actions                     chan Action
+	maybenot                    *C.Maybenot
+	newActionsBuf               []C.MaybenotAction
+	machineQueuedPaddingPackets map[uint64]*time.Timer
+	logger                      *Logger
+	stopping                    sync.WaitGroup // waitgroup for handleEvents and HandleDaitaActions
 }
 
 type Event struct {
@@ -99,12 +99,12 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 
 	numMachines := C.maybenot_num_machines(maybenot)
 	daita := MaybenotDaita{
-		events:         make(chan Event, eventsCapacity),
-		actions:        make(chan Action, actionsCapacity),
-		maybenot:       maybenot,
-		newActionsBuf:  make([]C.MaybenotAction, numMachines),
-		machineActions: map[uint64]Action{},
-		logger:         peer.device.log,
+		events:                      make(chan Event, eventsCapacity),
+		actions:                     make(chan Action, actionsCapacity),
+		maybenot:                    maybenot,
+		newActionsBuf:               make([]C.MaybenotAction, numMachines),
+		machineQueuedPaddingPackets: map[uint64]*time.Timer{},
+		logger:                      peer.device.log,
 	}
 
 	daita.stopping.Add(2)
@@ -206,48 +206,12 @@ func (daita *MaybenotDaita) handleEvents(peer *Peer) {
 	}()
 
 	for {
-		now := time.Now()
-
-		// get the time until the next action from machineActions should be performed, if any
-		var nextActionMachine *uint64 = nil
-		var nextActionIn time.Duration
-		for machine, action := range daita.machineActions {
-			timeUntilAction := action.Time.Sub(now)
-
-			if nextActionMachine == nil || timeUntilAction < nextActionIn {
-				nextActionIn = timeUntilAction
-				nextActionMachine = &machine
-			}
+		event, more := <-daita.events
+		if !more {
+			return
 		}
 
-		// if we found a pending action, set the timer
-		if nextActionMachine != nil {
-			actionTimer := time.NewTimer(nextActionIn)
-			// wait until we either get a new event, or until an action is supposed to fire
-			select {
-			case event, more := <-daita.events:
-				if !more {
-					return
-				}
-
-				daita.handleEvent(event)
-
-			case <-actionTimer.C:
-				// it's time to do the action! pop it from the map and send it to wireguard-go
-				action := daita.machineActions[*nextActionMachine]
-				delete(daita.machineActions, *nextActionMachine)
-				daita.actions <- action
-			}
-		} else {
-			event, more := <-daita.events
-
-			if !more {
-				return
-			}
-
-			daita.handleEvent(event)
-		}
-
+		daita.handleEvent(event)
 	}
 }
 
@@ -273,15 +237,33 @@ func (daita *MaybenotDaita) handleEvent(event Event) {
 
 	newActions := daita.newActionsBuf[:actionsWritten]
 	for _, newAction := range newActions {
-		// TODO: support more actions
-		if newAction.tag != C.MaybenotAction_InjectPadding {
-			daita.logger.Errorf("ignoring action type %d, unimplemented", newAction.tag)
+		action := daita.maybenotActionToGo(newAction, now)
+
+		switch action.ActionType {
+		case ActionTypeCancel:
+			machine := action.Machine
+			// If padding is queued for the machine, cancel it
+			if queuedPadding, ok := daita.machineQueuedPaddingPackets[machine]; ok {
+				queuedPadding.Stop()
+			}
+		case ActionTypeInjectPadding:
+			machine := action.Machine
+			timeUntilAction := action.Time.Sub(now)
+
+			// If padding is queued for the machine, cancel it
+			if queuedPadding, ok := daita.machineQueuedPaddingPackets[machine]; ok {
+				queuedPadding.Stop()
+			}
+
+			daita.machineQueuedPaddingPackets[machine] =
+				time.AfterFunc(timeUntilAction, func() {
+					daita.actions <- action
+				})
+		case ActionTypeBlockOutgoing:
+			daita.logger.Errorf("ignoring action type ActionTypeBlockOutgoing, unimplemented")
 			continue
 		}
 
-		newActionGo := daita.maybenotActionToGo(newAction, now)
-		machine := newActionGo.Machine
-		daita.machineActions[machine] = newActionGo
 	}
 }
 
