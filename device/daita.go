@@ -227,12 +227,14 @@ func (daita *MaybenotDaita) handleEvent(event Event, peer *Peer) {
 
 			// If padding is queued for the machine, cancel it
 			if queuedPadding, ok := daita.machineQueuedPaddingPackets[machine]; ok {
-				queuedPadding.Stop()
+				if queuedPadding.Stop() {
+					daita.stopping.Done()
+				}
 			}
 
+			daita.stopping.Add(1)
 			daita.machineQueuedPaddingPackets[machine] =
 				time.AfterFunc(timeUntilAction, func() {
-					daita.stopping.Add(1)
 					defer daita.stopping.Done()
 					injectPadding(action, peer)
 				})
