@@ -117,8 +117,11 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 func (daita *MaybenotDaita) Close() {
 	daita.logger.Verbosef("Waiting for DAITA routines to stop")
 	close(daita.events)
-	for _, time := range daita.machineQueuedPaddingPackets {
-		time.Stop()
+	for _, queuedPadding := range daita.machineQueuedPaddingPackets {
+		if queuedPadding.Stop() {
+			daita.logger.Verbosef("daita.stopping.Done()")
+			daita.stopping.Done()
+		}
 	}
 	daita.stopping.Wait()
 	daita.logger.Verbosef("DAITA routines have stopped")
@@ -219,7 +222,10 @@ func (daita *MaybenotDaita) handleEvent(event Event, peer *Peer) {
 			machine := action.Machine
 			// If padding is queued for the machine, cancel it
 			if queuedPadding, ok := daita.machineQueuedPaddingPackets[machine]; ok {
-				queuedPadding.Stop()
+				if queuedPadding.Stop() {
+					daita.logger.Verbosef("daita.stopping.Done()")
+					daita.stopping.Done()
+				}
 			}
 		case ActionTypeInjectPadding:
 			machine := action.Machine
@@ -228,14 +234,19 @@ func (daita *MaybenotDaita) handleEvent(event Event, peer *Peer) {
 			// If padding is queued for the machine, cancel it
 			if queuedPadding, ok := daita.machineQueuedPaddingPackets[machine]; ok {
 				if queuedPadding.Stop() {
+					daita.logger.Verbosef("daita.stopping.Done()")
 					daita.stopping.Done()
 				}
 			}
 
 			daita.stopping.Add(1)
+			daita.logger.Verbosef("daita.stopping.Add(1)")
 			daita.machineQueuedPaddingPackets[machine] =
 				time.AfterFunc(timeUntilAction, func() {
-					defer daita.stopping.Done()
+					defer func() {
+						daita.logger.Verbosef("daita.stopping.Done()")
+						daita.stopping.Done()
+					}()
 					injectPadding(action, peer)
 				})
 		case ActionTypeBlockOutgoing:
