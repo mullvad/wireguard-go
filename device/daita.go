@@ -119,6 +119,9 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 func (daita *MaybenotDaita) Close() {
 	daita.logger.Verbosef("Waiting for DAITA routines to stop")
 	close(daita.events)
+	for _, time := range daita.machineQueuedPaddingPackets {
+		time.Stop()
+	}
 	daita.stopping.Wait()
 	daita.logger.Verbosef("DAITA routines have stopped")
 }
@@ -257,7 +260,10 @@ func (daita *MaybenotDaita) handleEvent(event Event) {
 
 			daita.machineQueuedPaddingPackets[machine] =
 				time.AfterFunc(timeUntilAction, func() {
-					daita.actions <- action
+					select {
+					case daita.actions <- action:
+					default:
+					}
 				})
 		case ActionTypeBlockOutgoing:
 			daita.logger.Errorf("ignoring action type ActionTypeBlockOutgoing, unimplemented")
