@@ -378,7 +378,6 @@ func (device *Device) Close() {
 	device.rate.limiter.Close()
 
 	device.log.Verbosef("Device closed")
-
 	close(device.closed)
 }
 

@@ -50,8 +50,8 @@ type QueueOutboundElement struct {
 	nonce      uint64                // nonce for encryption
 	keypair    *Keypair              // keypair for encryption
 	peer       *Peer                 // related peer
-	padding    bool
-	machine_id *uint64
+	padding    bool                  // elem is a DAITA padding packet
+	machine_id *uint64               // machine ID that ordered said padding packet
 }
 
 func (device *Device) NewOutboundElement() *QueueOutboundElement {
@@ -280,10 +280,6 @@ func (device *Device) RoutineReadFromTUN() {
 
 func (peer *Peer) StagePacket(elem *QueueOutboundElement) {
 	for {
-		if peer == nil || peer.queue.staged == nil {
-			return
-		}
-
 		select {
 		case peer.queue.staged <- elem:
 			return
@@ -446,16 +442,15 @@ func (peer *Peer) RoutineSequentialSender() {
 			peer.timersDataSent()
 		}
 
-		daita := peer.daita
-		if daita != nil {
+		if peer.daita != nil {
 			if elem.padding {
 				if elem.machine_id == nil {
 					device.log.Errorf("Machine ID missing for PaddingSent event")
 				} else {
-					daita.PaddingSent(peer, uint(len(elem.packet)), *elem.machine_id)
+					peer.daita.PaddingSent(peer, uint(len(elem.packet)), *elem.machine_id)
 				}
 			} else {
-				daita.NonpaddingSent(peer, uint(len(elem.packet)))
+				peer.daita.NonpaddingSent(peer, uint(len(elem.packet)))
 			}
 		}
 

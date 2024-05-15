@@ -407,9 +407,6 @@ func (peer *Peer) RoutineSequentialReceiver() {
 		}
 		var err error
 		elem.Lock()
-
-		daita := peer.daita
-
 		if elem.packet == nil {
 			// decryption failed
 			goto skip
@@ -437,7 +434,7 @@ func (peer *Peer) RoutineSequentialReceiver() {
 		peer.timersDataReceived()
 
 		// Check if packet is a DAITA padding packet
-		if elem.packet[0] == DaitaPaddingMarker && daita != nil {
+		if elem.packet[0] == DaitaPaddingMarker && peer.daita != nil {
 			if len(elem.packet) < int(DaitaHeaderLen) {
 				goto skip
 			}
@@ -451,7 +448,7 @@ func (peer *Peer) RoutineSequentialReceiver() {
 			// NOTE: Daita padding packets can have EXTRA padding when constant packet size is
 			// enabled. In either case, paddingPacketLen will be equal to the original size of the
 			// DAITA padding packet.
-			daita.PaddingReceived(peer, uint(paddingPacketLen))
+			peer.daita.PaddingReceived(peer, uint(paddingPacketLen))
 			goto skip
 		}
 
@@ -472,8 +469,8 @@ func (peer *Peer) RoutineSequentialReceiver() {
 				goto skip
 			}
 
-			if daita != nil {
-				daita.NonpaddingReceived(peer, uint(totalLength))
+			if peer.daita != nil {
+				peer.daita.NonpaddingReceived(peer, uint(totalLength))
 			}
 
 		case ipv6.Version:
@@ -493,8 +490,8 @@ func (peer *Peer) RoutineSequentialReceiver() {
 				goto skip
 			}
 
-			if daita != nil {
-				daita.NonpaddingReceived(peer, uint(totalLength))
+			if peer.daita != nil {
+				peer.daita.NonpaddingReceived(peer, uint(totalLength))
 			}
 
 		default:
