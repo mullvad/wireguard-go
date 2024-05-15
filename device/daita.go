@@ -154,8 +154,9 @@ func (daita *MaybenotDaita) event(peer *Peer, eventType EventType, packetLen uin
 		XmitBytes: uint16(packetLen),
 	}
 
-	// TODO: stringify Event
-	peer.device.log.Verbosef("DAITA event: %v len=%d", eventType, packetLen)
+	// TODO: stringify Event?
+	// Too verbose, we have to skip this
+	// peer.device.log.Verbosef("DAITA event: %v len=%d", eventType, packetLen)
 
 	select {
 	case daita.events <- event:
