@@ -205,10 +205,6 @@ func (daita *MaybenotDaita) handleEvents(peer *Peer) {
 		daita.logger.Verbosef("%v - DAITA: event handler - stopped", peer)
 	}()
 
-	// create a new inactive timer to help us track when maybenot actions should be performed.
-	actionTimer := time.NewTimer(time.Duration(999999999999999999)) // wtf
-	actionTimer.Stop()
-
 	for {
 		now := time.Now()
 
@@ -226,29 +222,32 @@ func (daita *MaybenotDaita) handleEvents(peer *Peer) {
 
 		// if we found a pending action, set the timer
 		if nextActionMachine != nil {
-			actionTimer.Reset(nextActionIn)
-		}
+			actionTimer := time.NewTimer(nextActionIn)
+			// wait until we either get a new event, or until an action is supposed to fire
+			select {
+			case event, more := <-daita.events:
+				if !more {
+					return
+				}
 
-		// wait until we either get a new event, or until an action is supposed to fire
-		select {
-		case event, more := <-daita.events:
-			// make sure the timer is stopped and cleared
-			if nextActionMachine != nil && !actionTimer.Stop() {
-				<-actionTimer.C
+				daita.handleEvent(event)
+
+			case <-actionTimer.C:
+				// it's time to do the action! pop it from the map and send it to wireguard-go
+				action := daita.machineActions[*nextActionMachine]
+				delete(daita.machineActions, *nextActionMachine)
+				daita.actions <- action
 			}
+		} else {
+			event, more := <-daita.events
 
 			if !more {
 				return
 			}
 
 			daita.handleEvent(event)
-
-		case <-actionTimer.C:
-			// it's time to do the action! pop it from the map and send it to wireguard-go
-			action := daita.machineActions[*nextActionMachine]
-			delete(daita.machineActions, *nextActionMachine)
-			daita.actions <- action
 		}
+
 	}
 }
 
