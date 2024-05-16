@@ -45,11 +45,13 @@ import (
 
 type QueueOutboundElement struct {
 	sync.Mutex
-	buffer  *[MaxMessageSize]byte // slice holding the packet data
-	packet  []byte                // slice of "buffer" (always!)
-	nonce   uint64                // nonce for encryption
-	keypair *Keypair              // keypair for encryption
-	peer    *Peer                 // related peer
+	buffer     *[MaxMessageSize]byte // slice holding the packet data
+	packet     []byte                // slice of "buffer" (always!)
+	nonce      uint64                // nonce for encryption
+	keypair    *Keypair              // keypair for encryption
+	peer       *Peer                 // related peer
+	padding    bool                  // elem is a DAITA padding packet
+	machine_id *uint64               // machine ID that ordered said padding packet
 }
 
 func (device *Device) NewOutboundElement() *QueueOutboundElement {
@@ -439,6 +441,19 @@ func (peer *Peer) RoutineSequentialSender() {
 		if len(elem.packet) != MessageKeepaliveSize {
 			peer.timersDataSent()
 		}
+
+		if peer.daita != nil {
+			if elem.padding {
+				if elem.machine_id == nil {
+					device.log.Errorf("Machine ID missing for PaddingSent event")
+				} else {
+					peer.daita.PaddingSent(peer, uint(len(elem.packet)), *elem.machine_id)
+				}
+			} else {
+				peer.daita.NonpaddingSent(peer, uint(len(elem.packet)))
+			}
+		}
+
 		device.PutMessageBuffer(elem.buffer)
 		device.PutOutboundElement(elem)
 		if err != nil {
