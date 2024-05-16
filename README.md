@@ -1,6 +1,6 @@
-# Go Implementation of [WireGuard](https://www.wireguard.com/)
+# Go Implementation of [WireGuard](https://www.wireguard.com/) - Mullvad VPN fork
 
-This is an implementation of WireGuard in Go.
+This is an implementation of WireGuard in Go with support for [DAITA](#daita).
 
 ## Usage
 
@@ -52,6 +52,20 @@ This requires an installation of [go](https://golang.org) ≥ 1.18.
 $ git clone https://git.zx2c4.com/wireguard-go
 $ cd wireguard-go
 $ make
+```
+
+### DAITA
+
+[DAITA](https://mullvad.net/en/blog/introducing-defense-against-ai-guided-traffic-analysis-daita) is a Mullvad-specific addition to wireguard-go which integrates the [maybenot](https://github.com/maybenot-io/maybenot) framework for traffic analysis defenses. To build wireguard-go with DAITA you need to initialize the `maybenot` submodule.
+
+```
+git submodule update --init
+```
+
+Then build `wireguard-go` with DAITA support
+
+```
+make daita
 ```
 
 ## License

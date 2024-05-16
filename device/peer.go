@@ -53,6 +53,9 @@ type Peer struct {
 	cookieGenerator             CookieGenerator
 	trieEntries                 list.List
 	persistentKeepaliveInterval atomic.Uint32
+
+	daita              Daita
+	constantPacketSize bool
 }
 
 func (device *Device) NewPeer(pk NoisePublicKey) (*Peer, error) {
@@ -252,6 +255,12 @@ func (peer *Peer) Stop() {
 	// Signal that RoutineSequentialSender and RoutineSequentialReceiver should exit.
 	peer.queue.inbound.c <- nil
 	peer.queue.outbound.c <- nil
+
+	if peer.daita != nil {
+		peer.daita.Close()
+		peer.daita = nil
+	}
+
 	peer.stopping.Wait()
 	peer.device.queue.encryption.wg.Done() // no more writes to encryption queue from us
 
