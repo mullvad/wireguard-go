@@ -54,7 +54,8 @@ type Peer struct {
 	trieEntries                 list.List
 	persistentKeepaliveInterval atomic.Uint32
 
-	daita Daita
+	daita              Daita
+	constantPacketSize bool
 }
 
 func (device *Device) NewPeer(pk NoisePublicKey) (*Peer, error) {
@@ -106,6 +107,8 @@ func (device *Device) NewPeer(pk NoisePublicKey) (*Peer, error) {
 
 	// add
 	device.peers.keyMap[pk] = peer
+
+	peer.constantPacketSize = true // TODO set from daemon
 
 	return peer, nil
 }

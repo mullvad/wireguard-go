@@ -270,6 +270,22 @@ func (device *Device) RoutineReadFromTUN() {
 		if peer == nil {
 			continue
 		}
+		if peer.constantPacketSize {
+			mtu, err := device.tun.device.MTU()
+			if err != nil {
+				device.log.Errorf("Failed to send packet with constant size because of missing MTU: %v", err)
+				continue
+			}
+			constantPacketSize := mtu
+			// When go is updated to 1.21, use this instead to clear the slice:
+			// clear(elem.buffer[offset+size : offset+constantPacketSize])
+			// TODO: try replacing with copy() into a zeroed buffer
+			for i := offset + size; i < offset+constantPacketSize; i++ {
+				elem.buffer[i] = 0
+			}
+			elem.packet = elem.buffer[offset : offset+constantPacketSize]
+		}
+
 		if peer.isRunning.Load() {
 			peer.StagePacket(elem)
 			elem = nil
