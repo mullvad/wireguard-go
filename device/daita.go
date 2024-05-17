@@ -184,7 +184,17 @@ func injectPadding(action Action, peer *Peer) {
 	elem.padding = true
 	elem.machine_id = &action.Machine
 
-	size := action.Payload.ByteCount + DaitaHeaderLen
+	var size uint16
+	if peer.constantPacketSize {
+		sizeInt, err := peer.device.tun.device.MTU()
+		if err != nil {
+			peer.device.log.Errorf("Failed to inject DAITA padding because of missing MTU: %v", err)
+			return
+		}
+		size = uint16(sizeInt)
+	} else {
+		size = action.Payload.ByteCount
+	}
 	if size == 0 {
 		peer.device.log.Errorf("DAITA padding action contained invalid size %v bytes", size)
 		return
