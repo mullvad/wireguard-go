@@ -54,6 +54,20 @@ $ cd wireguard-go
 $ make
 ```
 
+### DAITA
+
+This requires the `maybenot` submodule.
+
+```
+git submodule update --init
+```
+
+Then build `wireguard-go` with DAITA support
+
+```
+make daita
+```
+
 ## License
 
     Copyright (C) 2017-2023 WireGuard LLC. All Rights Reserved.
