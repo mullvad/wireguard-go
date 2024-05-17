@@ -1,6 +1,8 @@
 PREFIX ?= /usr
 DESTDIR ?=
+LIBDEST ?= $(CURDIR)
 BINDIR ?= $(PREFIX)/bin
+TARGET ?=
 export GO111MODULE := on
 
 all: generate-version-and-build
@@ -22,10 +24,17 @@ wireguard-go: $(wildcard *.go) $(wildcard */*.go)
 install: wireguard-go
 	@install -v -d "$(DESTDIR)$(BINDIR)" && install -v -m 0755 "$<" "$(DESTDIR)$(BINDIR)/wireguard-go"
 
+daita: libmaybenot.a
+	go build --tags daita -v -o wireguard-go
+
+libmaybenot.a: $(wildcard maybenot/*)
+	make --directory maybenot/crates/maybenot-ffi/ DESTINATION=$(LIBDEST) TARGET=$(TARGET)
+
 test:
 	go test ./...
 
 clean:
 	rm -f wireguard-go
+	rm -f libmaybenot.a
 
 .PHONY: all clean test install generate-version-and-build
