@@ -84,10 +84,18 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 	peer.device.log.Verbosef("Enabling DAITA for peer: %v", peer)
 	peer.device.log.Verbosef("Params: eventsCapacity=%v, actionsCapacity=%v", eventsCapacity, actionsCapacity) // TODO: Deleteme
 
+	mtu, err := peer.device.tun.device.MTU()
+	if err != nil {
+		peer.device.log.Errorf("Failed to activate DAITA as because of error fetching MTU, %v", err)
+		return false
+	}
+	peer.device.log.Verbosef("MTU %v", mtu)
 	var maybenot *C.Maybenot
 	c_machines := C.CString(machines)
+	maxPaddingBytes := C.double(0.0)  // TODO: set from args
+	maxBlockingBytes := C.double(0.0) // TODO: set from args
 	maybenot_result := C.maybenot_start(
-		c_machines, 0.0, 0.0, 1440,
+		c_machines, maxPaddingBytes, maxBlockingBytes, C.ushort(mtu),
 		&maybenot,
 	)
 	C.free(unsafe.Pointer(c_machines))
