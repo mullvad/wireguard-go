@@ -243,24 +243,22 @@ func (device *Device) RoutineReadFromTUN() {
 			continue
 		}
 
-		elem.packet = elem.buffer[offset : offset+size]
-
 		// lookup peer
 
 		var peer *Peer
-		switch elem.packet[0] >> 4 {
+		switch elem.buffer[offset] >> 4 {
 		case ipv4.Version:
-			if len(elem.packet) < ipv4.HeaderLen {
+			if size < ipv4.HeaderLen {
 				continue
 			}
-			dst := elem.packet[IPv4offsetDst : IPv4offsetDst+net.IPv4len]
+			dst := elem.buffer[offset+IPv4offsetDst : offset+IPv4offsetDst+net.IPv4len]
 			peer = device.allowedips.Lookup(dst)
 
 		case ipv6.Version:
-			if len(elem.packet) < ipv6.HeaderLen {
+			if size < ipv6.HeaderLen {
 				continue
 			}
-			dst := elem.packet[IPv6offsetDst : IPv6offsetDst+net.IPv6len]
+			dst := elem.buffer[offset+IPv6offsetDst : offset+IPv6offsetDst+net.IPv6len]
 			peer = device.allowedips.Lookup(dst)
 
 		default:
@@ -269,6 +267,18 @@ func (device *Device) RoutineReadFromTUN() {
 
 		if peer == nil {
 			continue
+		}
+		if peer.constantPacketSize {
+			// Is MessageTransportHeaderSize the wg header size? No it should be 40 or 60 bytes dep on IP version
+			constantPacketSize := int(device.tun.mtu.Load()) - MessageTransportHeaderSize
+			// When go is updated to 1.21, use this instead to clear the slice:
+			// clear(elem.buffer[offset+size : offset+constantPacketSize])
+			// for i := range elem.buffer[offset+size : offset+constantPacketSize] {
+			// 	elem.buffer[i] = 0
+			// }
+			elem.packet = elem.buffer[offset : offset+constantPacketSize]
+		} else {
+			elem.packet = elem.buffer[offset : offset+size]
 		}
 		if peer.isRunning.Load() {
 			peer.StagePacket(elem)
