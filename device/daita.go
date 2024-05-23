@@ -261,6 +261,7 @@ func (daita *MaybenotDaita) maybenotEventToActions(event Event) []C.MaybenotActi
 	result := C.maybenot_on_events(daita.maybenot, &cEvent, 1, &daita.newActionsBuf[0], &actionsWritten)
 	if result != 0 {
 		daita.logger.Errorf("Failed to handle event as it was a null pointer\nEvent: %d\n", event)
+		return nil
 	}
 
 	newActions := daita.newActionsBuf[:actionsWritten]
