@@ -282,7 +282,7 @@ func cActionToGo(action_c C.MaybenotAction) Action {
 	return Action{
 		Machine:    uint64(padding_action.machine),
 		Timeout:    timeout,
-		ActionType: 1, // TODO
+		ActionType: ActionTypeInjectPadding,
 		Payload: Padding{
 			ByteCount: uint16(padding_action.size),
 			Replace:   bool(padding_action.replace),
