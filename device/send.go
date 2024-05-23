@@ -243,22 +243,24 @@ func (device *Device) RoutineReadFromTUN() {
 			continue
 		}
 
+		elem.packet = elem.buffer[offset : offset+size]
+
 		// lookup peer
 
 		var peer *Peer
-		switch elem.buffer[offset] >> 4 {
+		switch elem.packet[0] >> 4 {
 		case ipv4.Version:
-			if size < ipv4.HeaderLen {
+			if len(elem.packet) < ipv4.HeaderLen {
 				continue
 			}
-			dst := elem.buffer[offset+IPv4offsetDst : offset+IPv4offsetDst+net.IPv4len]
+			dst := elem.packet[IPv4offsetDst : IPv4offsetDst+net.IPv4len]
 			peer = device.allowedips.Lookup(dst)
 
 		case ipv6.Version:
-			if size < ipv6.HeaderLen {
+			if len(elem.packet) < ipv6.HeaderLen {
 				continue
 			}
-			dst := elem.buffer[offset+IPv6offsetDst : offset+IPv6offsetDst+net.IPv6len]
+			dst := elem.packet[IPv6offsetDst : IPv6offsetDst+net.IPv6len]
 			peer = device.allowedips.Lookup(dst)
 
 		default:
@@ -282,9 +284,8 @@ func (device *Device) RoutineReadFromTUN() {
 				elem.buffer[i] = 0
 			}
 			elem.packet = elem.buffer[offset : offset+constantPacketSize]
-		} else {
-			elem.packet = elem.buffer[offset : offset+size]
 		}
+
 		if peer.isRunning.Load() {
 			peer.StagePacket(elem)
 			elem = nil
