@@ -274,8 +274,8 @@ func (daita *MaybenotDaita) maybenotEventToActions(event Event) []C.MaybenotActi
 	// TODO: fetch an error string from the FFI corresponding to the error code
 	result := C.maybenot_on_event(daita.maybenot, cEvent, &daita.newActionsBuf[0], &actionsWritten)
 	if result != 0 {
-
 		daita.logger.Errorf("Failed to handle event as it was a null pointer\nEvent: %d\n", event)
+		return nil
 	}
 
 	newActions := daita.newActionsBuf[:actionsWritten]
