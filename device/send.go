@@ -276,14 +276,20 @@ func (device *Device) RoutineReadFromTUN() {
 				device.log.Errorf("Failed to send packet with constant size because of missing MTU: %v", err)
 				continue
 			}
-			constantPacketSize := mtu
-			// When go is updated to 1.21, use this instead to clear the slice:
-			// clear(elem.buffer[offset+size : offset+constantPacketSize])
-			// TODO: try replacing with copy() into a zeroed buffer
-			for i := offset + size; i < offset+constantPacketSize; i++ {
-				elem.buffer[i] = 0
+			size := len(elem.packet)
+			offset := MessageTransportHeaderSize
+			// size should and cannot be larger than mtu as far as we can tell, but for safety we check
+			if mtu > size {
+				// Here, we extend the packet to always be MTU sized as an obfuscation.
+				// To avoid sending data from the previous packet, we need to clear the extra buffer content that we add.
+				// TODO: When go is updated to 1.21, use this instead to clear the slice:
+				// clear(elem.buffer[offset+size : offset+mtu])
+				// Or try replacing with copy() from a zeroed buffer
+				for i := offset + size; i < offset+mtu; i++ {
+					elem.buffer[i] = 0
+				}
+				elem.packet = elem.buffer[offset : offset+mtu]
 			}
-			elem.packet = elem.buffer[offset : offset+constantPacketSize]
 		}
 
 		if peer.isRunning.Load() {
