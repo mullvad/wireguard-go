@@ -108,8 +108,6 @@ func (device *Device) NewPeer(pk NoisePublicKey) (*Peer, error) {
 	// add
 	device.peers.keyMap[pk] = peer
 
-	peer.constantPacketSize = true // TODO set from daemon
-
 	return peer, nil
 }
 
