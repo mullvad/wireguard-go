@@ -50,7 +50,8 @@ type QueueOutboundElement struct {
 	nonce      uint64                // nonce for encryption
 	keypair    *Keypair              // keypair for encryption
 	peer       *Peer                 // related peer
-	padding    bool                  // elem is a DAITA padding packet
+	keepalive  bool                  // is a keepalive message
+	padding    bool                  // is a DAITA padding packet
 	machine_id *uint64               // machine ID that ordered said padding packet
 }
 
@@ -79,6 +80,7 @@ func (elem *QueueOutboundElement) clearPointers() {
 func (peer *Peer) SendKeepalive() {
 	if len(peer.queue.staged) == 0 && peer.isRunning.Load() {
 		elem := peer.device.NewOutboundElement()
+		elem.keepalive = true
 		select {
 		case peer.queue.staged <- elem:
 			peer.device.log.Verbosef("%v - Sending keepalive packet", peer)
@@ -461,9 +463,8 @@ func (peer *Peer) RoutineSequentialSender() {
 		// send message and return buffer to pool
 
 		err := peer.SendBuffer(elem.packet)
-		if len(elem.packet) != MessageKeepaliveSize {
+		if !elem.keepalive {
 			peer.timersDataSent()
-
 			if peer.daita != nil {
 				if elem.padding {
 					if elem.machine_id == nil {
