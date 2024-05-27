@@ -327,7 +327,7 @@ top:
 				}
 				size := len(elem.packet)
 				offset := MessageTransportHeaderSize
-				// size should and cannot be larger than mtu as far as we can tell, be for safety we check
+				// size should and cannot be larger than mtu as far as we can tell, but for safety we check
 				if mtu > size {
 					// Here, we extend the packet to always be MTU sized as an obfuscation.
 					// To avoid sending data from the previous packet, we need to clear the extra buffer content that we add.
