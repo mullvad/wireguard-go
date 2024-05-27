@@ -328,9 +328,11 @@ top:
 				offset := MessageTransportHeaderSize
 				// size should and cannot be larger than mtu as far as we can tell, be for safety we check
 				if mtu > size {
-					// When go is updated to 1.21, use this instead to clear the slice:
+					// Here, we extend the packet to always be MTU sized as an obfuscation.
+					// To avoid sending data from the previous packet, we need to clear the extra buffer content that we add.
+					// TODO: When go is updated to 1.21, use this instead to clear the slice:
 					// clear(elem.buffer[offset+size : offset+mtu])
-					// TODO: try replacing with copy() into a zeroed buffer
+					// Or try replacing with copy() from a zeroed buffer
 					for i := offset + size; i < offset+mtu; i++ {
 						elem.buffer[i] = 0
 					}
