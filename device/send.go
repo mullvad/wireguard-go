@@ -272,7 +272,6 @@ func (device *Device) RoutineReadFromTUN() {
 		if peer == nil {
 			continue
 		}
-
 		if peer.isRunning.Load() {
 			peer.StagePacket(elem)
 			elem = nil
