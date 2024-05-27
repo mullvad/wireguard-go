@@ -387,7 +387,6 @@ func (device *Device) handlePeerLine(peer *ipcSetPeer, key, value string) error 
 		if value != "1" {
 			return ipcErrorf(ipc.IpcErrorInvalid, "invalid protocol version: %v", value)
 		}
-	// TODO: Add constant packet size like this?
 	case "constant_packet_size":
 		if value != "true" {
 			return ipcErrorf(ipc.IpcErrorInvalid, "failed to set constant packet size, invalid value: %v", value)
