@@ -461,17 +461,17 @@ func (peer *Peer) RoutineSequentialSender() {
 		err := peer.SendBuffer(elem.packet)
 		if len(elem.packet) != MessageKeepaliveSize {
 			peer.timersDataSent()
-		}
 
-		if peer.daita != nil {
-			if elem.padding {
-				if elem.machine_id == nil {
-					device.log.Errorf("Machine ID missing for PaddingSent event")
+			if peer.daita != nil {
+				if elem.padding {
+					if elem.machine_id == nil {
+						device.log.Errorf("Machine ID missing for PaddingSent event")
+					} else {
+						peer.daita.PaddingSent(peer, uint(len(elem.packet)), *elem.machine_id)
+					}
 				} else {
-					peer.daita.PaddingSent(peer, uint(len(elem.packet)), *elem.machine_id)
+					peer.daita.NonpaddingSent(peer, uint(len(elem.packet)))
 				}
-			} else {
-				peer.daita.NonpaddingSent(peer, uint(len(elem.packet)))
 			}
 		}
 
