@@ -270,25 +270,6 @@ func (device *Device) RoutineReadFromTUN() {
 		if peer == nil {
 			continue
 		}
-		if peer.constantPacketSize {
-			mtu, err := device.tun.device.MTU()
-			if err != nil {
-				device.log.Errorf("Failed to send packet with constant size because of missing MTU: %v", err)
-				continue
-			}
-			size := len(elem.packet)
-			offset := MessageTransportHeaderSize
-			// size should and cannot be larger than mtu as far as we can tell, be for safety we check
-			if mtu > size {
-				// When go is updated to 1.21, use this instead to clear the slice:
-				// clear(elem.buffer[offset+size : offset+mtu])
-				// TODO: try replacing with copy() into a zeroed buffer
-				for i := offset + size; i < offset+mtu; i++ {
-					elem.buffer[i] = 0
-				}
-				elem.packet = elem.buffer[offset : offset+mtu]
-			}
-		}
 
 		if peer.isRunning.Load() {
 			peer.StagePacket(elem)
@@ -335,6 +316,26 @@ top:
 				keypair.sendNonce.Store(RejectAfterMessages)
 				peer.StagePacket(elem) // XXX: Out of order, but we can't front-load go chans
 				goto top
+			}
+
+			if peer.constantPacketSize {
+				mtu, err := peer.device.tun.device.MTU()
+				if err != nil {
+					peer.device.log.Errorf("Failed to send packet with constant size because of missing MTU: %v", err)
+					continue
+				}
+				size := len(elem.packet)
+				offset := MessageTransportHeaderSize
+				// size should and cannot be larger than mtu as far as we can tell, be for safety we check
+				if mtu > size {
+					// When go is updated to 1.21, use this instead to clear the slice:
+					// clear(elem.buffer[offset+size : offset+mtu])
+					// TODO: try replacing with copy() into a zeroed buffer
+					for i := offset + size; i < offset+mtu; i++ {
+						elem.buffer[i] = 0
+					}
+					elem.packet = elem.buffer[offset : offset+mtu]
+				}
 			}
 
 			elem.keypair = keypair
