@@ -308,6 +308,8 @@ top:
 		return
 	}
 
+	allZeros := [MaxMessageSize]byte{}
+
 	for {
 		select {
 		case elem := <-peer.queue.staged:
@@ -329,11 +331,13 @@ top:
 					// To avoid sending data from the previous packet, we need to clear the extra buffer content that we add.
 					// TODO: When go is updated to 1.21, use this instead to clear the slice:
 					// clear(elem.buffer[offset+size : offset+mtu])
-					// Or try replacing with copy() from a zeroed buffer
-					for i := offset + size; i < offset+mtu; i++ {
-						elem.buffer[i] = 0
+					if offset+mtu < len(elem.buffer) {
+						elem.packet = elem.buffer[offset : offset+mtu]
+					} else {
+						elem.packet = elem.buffer[offset:]
 					}
-					elem.packet = elem.buffer[offset : offset+mtu]
+
+					copy(elem.packet[size:], allZeros[:])
 				}
 			}
 
