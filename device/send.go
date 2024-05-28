@@ -320,11 +320,7 @@ top:
 			}
 
 			if peer.constantPacketSize {
-				mtu, err := peer.device.tun.device.MTU()
-				if err != nil {
-					peer.device.log.Errorf("Failed to send packet with constant size because of missing MTU: %v", err)
-					continue
-				}
+				mtu := int(peer.device.tun.mtu.Load())
 				size := len(elem.packet)
 				offset := MessageTransportHeaderSize
 				// size should not and cannot be larger than mtu as far as we can tell, but for safety we check
