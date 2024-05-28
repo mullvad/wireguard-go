@@ -460,18 +460,6 @@ func (peer *Peer) RoutineSequentialSender() {
 		err := peer.SendBuffer(elem.packet)
 		if !elem.keepalive {
 			peer.timersDataSent()
-
-			if peer.daita != nil {
-				if elem.padding {
-					if elem.machine_id == nil {
-						device.log.Errorf("Machine ID missing for PaddingSent event")
-					} else {
-						peer.daita.PaddingSent(peer, uint(len(elem.packet)), *elem.machine_id)
-					}
-				} else {
-					peer.daita.NonpaddingSent(peer, uint(len(elem.packet)))
-				}
-			}
 		}
 
 		device.PutMessageBuffer(elem.buffer)
@@ -479,6 +467,18 @@ func (peer *Peer) RoutineSequentialSender() {
 		if err != nil {
 			device.log.Errorf("%v - Failed to send data packet: %v", peer, err)
 			continue
+		}
+
+		if peer.daita != nil && !elem.keepalive {
+			if elem.padding {
+				if elem.machine_id == nil {
+					device.log.Errorf("Machine ID missing for PaddingSent event")
+				} else {
+					peer.daita.PaddingSent(peer, uint(len(elem.packet)), *elem.machine_id)
+				}
+			} else {
+				peer.daita.NonpaddingSent(peer, uint(len(elem.packet)))
+			}
 		}
 
 		peer.keepKeyFreshSending()
