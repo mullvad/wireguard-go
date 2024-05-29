@@ -182,15 +182,14 @@ func injectPadding(action Action, peer *Peer) {
 	elem.machine_id = &action.Machine
 
 	size := action.Payload.ByteCount
-	if size == 0 {
+	if size < DaitaHeaderLen || size > uint16(peer.device.tun.mtu.Load()) {
 		peer.device.log.Errorf("DAITA padding action contained invalid size %v bytes", size)
 		return
 	}
 
 	elem.packet = elem.buffer[MessageTransportHeaderSize : MessageTransportHeaderSize+int(size)]
 	elem.packet[0] = DaitaPaddingMarker
-	daitaLengthField := binary.BigEndian.AppendUint16([]byte{}, size)
-	copy(elem.packet[DaitaOffsetTotalLength:DaitaOffsetTotalLength+2], daitaLengthField)
+	binary.BigEndian.PutUint16(elem.packet[DaitaOffsetTotalLength:DaitaOffsetTotalLength+2], size)
 
 	peer.StagePacket(elem)
 }
