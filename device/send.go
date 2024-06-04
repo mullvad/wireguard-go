@@ -45,14 +45,12 @@ import (
 
 type QueueOutboundElement struct {
 	sync.Mutex
-	buffer     *[MaxMessageSize]byte // slice holding the packet data
-	packet     []byte                // slice of "buffer" (always!)
-	nonce      uint64                // nonce for encryption
-	keypair    *Keypair              // keypair for encryption
-	peer       *Peer                 // related peer
-	keepalive  bool                  // is a keepalive message
-	padding    bool                  // is a DAITA padding packet
-	machine_id *uint64               // machine ID that ordered said padding packet
+	buffer    *[MaxMessageSize]byte // slice holding the packet data
+	packet    []byte                // slice of "buffer" (always!)
+	nonce     uint64                // nonce for encryption
+	keypair   *Keypair              // keypair for encryption
+	peer      *Peer                 // related peer
+	keepalive bool                  // is a keepalive message
 }
 
 func (device *Device) NewOutboundElement() *QueueOutboundElement {
@@ -276,6 +274,10 @@ func (device *Device) RoutineReadFromTUN() {
 			peer.StagePacket(elem)
 			elem = nil
 			peer.SendStagedPackets()
+
+			if peer.daita != nil {
+				peer.daita.NonpaddingSent(peer, uint(size))
+			}
 		}
 	}
 }
@@ -471,18 +473,6 @@ func (peer *Peer) RoutineSequentialSender() {
 		if err != nil {
 			device.log.Errorf("%v - Failed to send data packet: %v", peer, err)
 			continue
-		}
-
-		if peer.daita != nil && !elem.keepalive {
-			if elem.padding {
-				if elem.machine_id == nil {
-					device.log.Errorf("Machine ID missing for PaddingSent event")
-				} else {
-					peer.daita.PaddingSent(peer, uint(len(elem.packet)), *elem.machine_id)
-				}
-			} else {
-				peer.daita.NonpaddingSent(peer, uint(len(elem.packet)))
-			}
 		}
 
 		peer.keepKeyFreshSending()
