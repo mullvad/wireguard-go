@@ -178,9 +178,6 @@ func injectPadding(action Action, peer *Peer) {
 
 	elem := peer.device.NewOutboundElement()
 
-	elem.padding = true
-	elem.machine_id = &action.Machine
-
 	size := action.Payload.ByteCount
 	if size < DaitaHeaderLen || size > uint16(peer.device.tun.mtu.Load()) {
 		peer.device.log.Errorf("DAITA padding action contained invalid size %v bytes", size)
@@ -195,8 +192,9 @@ func injectPadding(action Action, peer *Peer) {
 		peer.StagePacket(elem)
 		elem = nil
 		peer.SendStagedPackets()
-	}
 
+		peer.daita.PaddingSent(peer, uint(size), action.Machine)
+	}
 }
 
 func (daita *MaybenotDaita) handleEvents(peer *Peer) {
