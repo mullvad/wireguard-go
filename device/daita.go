@@ -84,11 +84,8 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 	peer.device.log.Verbosef("Enabling DAITA for peer: %v", peer)
 	peer.device.log.Verbosef("Params: eventsCapacity=%v, actionsCapacity=%v", eventsCapacity, actionsCapacity) // TODO: Deleteme
 
-	mtu, err := peer.device.tun.device.MTU()
-	if err != nil {
-		peer.device.log.Errorf("Failed to activate DAITA as because of error fetching MTU, %v", err)
-		return false
-	}
+	mtu := peer.device.tun.mtu.Load()
+
 	peer.device.log.Verbosef("MTU %v", mtu)
 	var maybenot *C.MaybenotFramework
 	c_machines := C.CString(machines)
@@ -184,16 +181,15 @@ func injectPadding(action Action, peer *Peer) {
 	elem.padding = true
 	elem.machine_id = &action.Machine
 
-	size := action.Payload.ByteCount + DaitaHeaderLen
-	if size == 0 {
+	size := action.Payload.ByteCount
+	if size < DaitaHeaderLen || size > uint16(peer.device.tun.mtu.Load()) {
 		peer.device.log.Errorf("DAITA padding action contained invalid size %v bytes", size)
 		return
 	}
 
 	elem.packet = elem.buffer[MessageTransportHeaderSize : MessageTransportHeaderSize+int(size)]
 	elem.packet[0] = DaitaPaddingMarker
-	daitaLengthField := binary.BigEndian.AppendUint16([]byte{}, size)
-	copy(elem.packet[DaitaOffsetTotalLength:DaitaOffsetTotalLength+2], daitaLengthField)
+	binary.BigEndian.PutUint16(elem.packet[DaitaOffsetTotalLength:DaitaOffsetTotalLength+2], size)
 
 	peer.StagePacket(elem)
 }
@@ -265,6 +261,7 @@ func (daita *MaybenotDaita) maybenotEventToActions(event Event) []C.MaybenotActi
 	result := C.maybenot_on_events(daita.maybenot, &cEvent, 1, &daita.newActionsBuf[0], &actionsWritten)
 	if result != 0 {
 		daita.logger.Errorf("Failed to handle event as it was a null pointer\nEvent: %d\n", event)
+		return nil
 	}
 
 	newActions := daita.newActionsBuf[:actionsWritten]
@@ -285,7 +282,7 @@ func cActionToGo(action_c C.MaybenotAction) Action {
 	return Action{
 		Machine:    uint64(padding_action.machine),
 		Timeout:    timeout,
-		ActionType: 1, // TODO
+		ActionType: ActionTypeInjectPadding,
 		Payload: Padding{
 			ByteCount: uint16(padding_action.size),
 			Replace:   bool(padding_action.replace),

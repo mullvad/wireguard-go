@@ -50,7 +50,8 @@ type QueueOutboundElement struct {
 	nonce      uint64                // nonce for encryption
 	keypair    *Keypair              // keypair for encryption
 	peer       *Peer                 // related peer
-	padding    bool                  // elem is a DAITA padding packet
+	keepalive  bool                  // is a keepalive message
+	padding    bool                  // is a DAITA padding packet
 	machine_id *uint64               // machine ID that ordered said padding packet
 }
 
@@ -79,6 +80,7 @@ func (elem *QueueOutboundElement) clearPointers() {
 func (peer *Peer) SendKeepalive() {
 	if len(peer.queue.staged) == 0 && peer.isRunning.Load() {
 		elem := peer.device.NewOutboundElement()
+		elem.keepalive = true
 		select {
 		case peer.queue.staged <- elem:
 			peer.device.log.Verbosef("%v - Sending keepalive packet", peer)
@@ -306,6 +308,8 @@ top:
 		return
 	}
 
+	allZeros := [MaxMessageSize]byte{}
+
 	for {
 		select {
 		case elem := <-peer.queue.staged:
@@ -315,6 +319,26 @@ top:
 				keypair.sendNonce.Store(RejectAfterMessages)
 				peer.StagePacket(elem) // XXX: Out of order, but we can't front-load go chans
 				goto top
+			}
+
+			if peer.constantPacketSize {
+				mtu := int(peer.device.tun.mtu.Load())
+				size := len(elem.packet)
+				offset := MessageTransportHeaderSize
+				// size should not and cannot be larger than mtu as far as we can tell, but for safety we check
+				if mtu > size {
+					// Here, we extend the packet to always be MTU sized as an obfuscation.
+					if offset+mtu < len(elem.buffer) {
+						elem.packet = elem.buffer[offset : offset+mtu]
+					} else {
+						elem.packet = elem.buffer[offset:]
+					}
+
+					// To avoid sending data from the previous packet, we need to clear the extra buffer content that we add.
+					// TODO: When go is updated to 1.21, use this instead to clear the slice:
+					// clear(elem.packet[size:])
+					copy(elem.packet[size:], allZeros[:])
+				}
 			}
 
 			elem.keypair = keypair
@@ -438,11 +462,18 @@ func (peer *Peer) RoutineSequentialSender() {
 		// send message and return buffer to pool
 
 		err := peer.SendBuffer(elem.packet)
-		if len(elem.packet) != MessageKeepaliveSize {
+		if !elem.keepalive {
 			peer.timersDataSent()
 		}
 
-		if peer.daita != nil {
+		device.PutMessageBuffer(elem.buffer)
+		device.PutOutboundElement(elem)
+		if err != nil {
+			device.log.Errorf("%v - Failed to send data packet: %v", peer, err)
+			continue
+		}
+
+		if peer.daita != nil && !elem.keepalive {
 			if elem.padding {
 				if elem.machine_id == nil {
 					device.log.Errorf("Machine ID missing for PaddingSent event")
@@ -452,13 +483,6 @@ func (peer *Peer) RoutineSequentialSender() {
 			} else {
 				peer.daita.NonpaddingSent(peer, uint(len(elem.packet)))
 			}
-		}
-
-		device.PutMessageBuffer(elem.buffer)
-		device.PutOutboundElement(elem)
-		if err != nil {
-			device.log.Errorf("%v - Failed to send data packet: %v", peer, err)
-			continue
 		}
 
 		peer.keepKeyFreshSending()
