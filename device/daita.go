@@ -191,7 +191,12 @@ func injectPadding(action Action, peer *Peer) {
 	elem.packet[0] = DaitaPaddingMarker
 	binary.BigEndian.PutUint16(elem.packet[DaitaOffsetTotalLength:DaitaOffsetTotalLength+2], size)
 
-	peer.StagePacket(elem)
+	if peer.isRunning.Load() {
+		peer.StagePacket(elem)
+		elem = nil
+		peer.SendStagedPackets()
+	}
+
 }
 
 func (daita *MaybenotDaita) handleEvents(peer *Peer) {
