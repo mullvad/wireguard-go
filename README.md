@@ -56,7 +56,7 @@ $ make
 
 ### DAITA
 
-This requires the `maybenot` submodule.
+[DAITA](https://mullvad.net/en/blog/introducing-defense-against-ai-guided-traffic-analysis-daita) is a Mullvad-specific addition to wireguard-go which integrates the [maybenot](https://github.com/maybenot-io/maybenot) framework for traffic analysis defenses. To build wireguard-go with DAITA you need to initialize the `maybenot` submodule.
 
 ```
 git submodule update --init
