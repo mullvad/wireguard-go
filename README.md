@@ -1,6 +1,6 @@
-# Go Implementation of [WireGuard](https://www.wireguard.com/)
+# Go Implementation of [WireGuard](https://www.wireguard.com/) - MullvadVPN fork
 
-This is an implementation of WireGuard in Go.
+This is an implementation of WireGuard in Go with support for [DAITA](#daita).
 
 ## Usage
 
