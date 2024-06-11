@@ -13,7 +13,7 @@ import (
 // #include <stdio.h>
 // #include <stdlib.h>
 // #include "../maybenot/crates/maybenot-ffi/maybenot.h"
-// #cgo LDFLAGS: -L${SRCDIR}/../ -l:libmaybenot.a -lm
+// #cgo LDFLAGS: -L${SRCDIR}/../ -lmaybenot -lm
 import "C"
 
 type MaybenotDaita struct {
