@@ -58,7 +58,7 @@ type Action struct {
 	// The time at which the action should be performed
 	Timeout time.Duration
 
-	// TODO: Support more action types than ActionTypeInjectPadding
+	// Information about the padding action
 	Payload Padding
 }
 
@@ -82,7 +82,6 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 	}
 
 	peer.device.log.Verbosef("Enabling DAITA for peer: %v", peer)
-	peer.device.log.Verbosef("Params: eventsCapacity=%v, actionsCapacity=%v", eventsCapacity, actionsCapacity) // TODO: Deleteme
 
 	mtu := peer.device.tun.mtu.Load()
 
@@ -160,10 +159,6 @@ func (daita *MaybenotDaita) event(peer *Peer, eventType EventType, packetLen uin
 		EventType: eventType,
 		XmitBytes: uint16(packetLen),
 	}
-
-	// TODO: stringify Event?
-	// Too verbose, we have to skip this
-	// peer.device.log.Verbosef("DAITA event: %v len=%d", eventType, packetLen)
 
 	select {
 	case daita.events <- event:
@@ -274,7 +269,6 @@ func (daita *MaybenotDaita) maybenotEventToActions(event Event) []C.MaybenotActi
 }
 
 func cActionToGo(action_c C.MaybenotAction) Action {
-	// TODO: support more actions
 	if action_c.tag != C.MaybenotAction_InjectPadding {
 		panic("Unsupported tag")
 	}
