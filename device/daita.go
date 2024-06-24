@@ -68,7 +68,7 @@ type Padding struct {
 	Replace   bool
 }
 
-func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapacity uint) bool {
+func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapacity uint, maxPaddingBytes float64, maxBlockingBytes float64) bool {
 	peer.Lock()
 	defer peer.Unlock()
 
@@ -89,10 +89,12 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 	peer.device.log.Verbosef("MTU %v", mtu)
 	var maybenot *C.MaybenotFramework
 	c_machines := C.CString(machines)
-	maxPaddingBytes := C.double(0.0)  // TODO: set from args
-	maxBlockingBytes := C.double(0.0) // TODO: set from args
+
+	c_maxPaddingBytes := C.double(maxPaddingBytes)
+	c_maxBlockingBytes := C.double(maxBlockingBytes)
+
 	maybenot_result := C.maybenot_start(
-		c_machines, maxPaddingBytes, maxBlockingBytes, C.ushort(mtu),
+		c_machines, c_maxPaddingBytes, c_maxBlockingBytes, C.ushort(mtu),
 		&maybenot,
 	)
 	C.free(unsafe.Pointer(c_machines))
