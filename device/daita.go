@@ -18,6 +18,7 @@ import "C"
 
 type MaybenotDaita struct {
 	events        chan Event
+	closed        chan struct{}
 	actions       chan Action
 	maybenot      *C.MaybenotFramework
 	newActionsBuf []C.MaybenotAction
@@ -106,6 +107,7 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 	numMachines := C.maybenot_num_machines(maybenot)
 	daita := MaybenotDaita{
 		events:        make(chan Event, eventsCapacity),
+		closed:        make(chan struct{}),
 		maybenot:      maybenot,
 		newActionsBuf: make([]C.MaybenotAction, numMachines),
 		paddingQueue:  map[uint64]*time.Timer{},
@@ -122,7 +124,10 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 // Stop the MaybenotDaita instance. It must not be used after calling this.
 func (daita *MaybenotDaita) Close() {
 	daita.logger.Verbosef("Waiting for DAITA routines to stop")
+
+	close(daita.closed)
 	close(daita.events)
+
 	for _, queuedPadding := range daita.paddingQueue {
 		if queuedPadding.Stop() {
 			daita.stopping.Done()
@@ -161,6 +166,7 @@ func (daita *MaybenotDaita) event(peer *Peer, eventType EventType, packetLen uin
 	}
 
 	select {
+	case <- daita.closed:
 	case daita.events <- event:
 	default:
 		peer.device.log.Verbosef("Dropped DAITA event %v due to full buffer", event.EventType)
