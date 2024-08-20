@@ -17,13 +17,15 @@ import (
 import "C"
 
 type MaybenotDaita struct {
-	events        chan Event
-	actions       chan Action
-	maybenot      *C.MaybenotFramework
-	newActionsBuf []C.MaybenotAction
-	paddingQueue  map[uint64]*time.Timer // Map from machine to queued padding packets
-	logger        *Logger
-	stopping      sync.WaitGroup // waitgroup for handleEvents and HandleDaitaActions
+	events          chan Event
+	eventsClosed    bool
+	eventsCloseLock sync.RWMutex
+	actions         chan Action
+	maybenot        *C.MaybenotFramework
+	newActionsBuf   []C.MaybenotAction
+	paddingQueue    map[uint64]*time.Timer // Map from machine to queued padding packets
+	logger          *Logger
+	stopping        sync.WaitGroup // waitgroup for handleEvents and HandleDaitaActions
 }
 
 type Event struct {
@@ -106,6 +108,7 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 	numMachines := C.maybenot_num_machines(maybenot)
 	daita := MaybenotDaita{
 		events:        make(chan Event, eventsCapacity),
+		eventsClosed:  false,
 		maybenot:      maybenot,
 		newActionsBuf: make([]C.MaybenotAction, numMachines),
 		paddingQueue:  map[uint64]*time.Timer{},
@@ -122,7 +125,12 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 // Stop the MaybenotDaita instance. It must not be used after calling this.
 func (daita *MaybenotDaita) Close() {
 	daita.logger.Verbosef("Waiting for DAITA routines to stop")
+
+	daita.eventsCloseLock.Lock()
 	close(daita.events)
+	daita.eventsClosed = true
+	daita.eventsCloseLock.Unlock()
+
 	for _, queuedPadding := range daita.paddingQueue {
 		if queuedPadding.Stop() {
 			daita.stopping.Done()
@@ -158,6 +166,13 @@ func (daita *MaybenotDaita) event(peer *Peer, eventType EventType, packetLen uin
 		Peer:      peer.handshake.remoteStatic,
 		EventType: eventType,
 		XmitBytes: uint16(packetLen),
+	}
+
+	daita.eventsCloseLock.RLock()
+	defer daita.eventsCloseLock.RUnlock()
+
+	if daita.eventsClosed {
+		return
 	}
 
 	select {
