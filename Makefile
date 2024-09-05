@@ -28,7 +28,8 @@ daita: libmaybenot.a
 	go build --tags daita -v -o wireguard-go
 
 libmaybenot.a: $(wildcard maybenot/*)
-	make --directory maybenot/crates/maybenot-ffi/ DESTINATION=$(LIBDEST) TARGET=$(TARGET)
+	touch ./maybenot/crates/maybenot-ffi/maybenot.h
+	make --directory maybenot/crates/maybenot-ffi/ DESTINATION=$(LIBDEST) TARGET=$(TARGET) --debug=v
 
 test:
 	go test ./...
