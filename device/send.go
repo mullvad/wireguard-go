@@ -335,11 +335,7 @@ top:
 					}
 
 					// To avoid sending data from the previous packet, we need to clear the extra buffer content that we add.
-					// TODO: When go is updated to 1.21, use this instead to clear the slice:
-					// clear(elem.packet[size:])
-					for i := range elem.packet[size:] {
-						elem.packet[size+i] = 0
-					}
+					clear(elem.packet[size:])
 				}
 			}
 
