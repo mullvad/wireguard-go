@@ -21,6 +21,12 @@ Line wrap the file at 100 chars.                                              Th
 
 ## [Unreleased]
 
+## [0.1.2] - 2024-09-09
+### Changed
+- Bump golang to 1.21.
+- Bump maybenot to 1.1.3.
+
+
 ## [0.1.1] - 2024-08-21
 ### Fixed
 - Fix netstack tunnel leaking when closed.
