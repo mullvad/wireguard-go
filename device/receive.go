@@ -441,14 +441,12 @@ func (peer *Peer) RoutineSequentialReceiver() {
 			field := elem.packet[DaitaOffsetTotalLength : DaitaOffsetTotalLength+2]
 			paddingPacketLen := binary.BigEndian.Uint16(field)
 
+			// Validate DAITA header
 			if len(elem.packet) < int(paddingPacketLen) {
 				goto skip
 			}
 
-			// NOTE: Daita padding packets can have EXTRA padding when constant packet size is
-			// enabled. In either case, paddingPacketLen will be equal to the original size of the
-			// DAITA padding packet.
-			peer.daita.PaddingReceived(peer, uint(paddingPacketLen))
+			peer.daita.PaddingReceived(peer)
 			goto skip
 		}
 
@@ -470,7 +468,7 @@ func (peer *Peer) RoutineSequentialReceiver() {
 			}
 
 			if peer.daita != nil {
-				peer.daita.NonpaddingReceived(peer, uint(totalLength))
+				peer.daita.NormalReceived(peer)
 			}
 
 		case ipv6.Version:
@@ -491,7 +489,7 @@ func (peer *Peer) RoutineSequentialReceiver() {
 			}
 
 			if peer.daita != nil {
-				peer.daita.NonpaddingReceived(peer, uint(totalLength))
+				peer.daita.NormalReceived(peer)
 			}
 
 		default:
