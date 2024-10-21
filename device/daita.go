@@ -34,7 +34,6 @@ type Event struct {
 
 	Peer      NoisePublicKey
 	EventType EventType
-	XmitBytes uint16
 }
 
 type ActionType uint32
@@ -65,9 +64,7 @@ type Action struct {
 }
 
 type Padding struct {
-	// The size of the padding packet, in bytes. NOT including the Daita header.
-	ByteCount uint16
-	Replace   bool
+	Replace bool
 }
 
 func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapacity uint, maxPaddingBytes float64, maxBlockingBytes float64) bool {
@@ -95,7 +92,7 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 	c_maxBlockingBytes := C.double(maxBlockingBytes)
 
 	maybenot_result := C.maybenot_start(
-		c_machines, c_maxPaddingBytes, c_maxBlockingBytes, C.ushort(mtu),
+		c_machines, c_maxPaddingBytes, c_maxBlockingBytes,
 		&maybenot,
 	)
 	C.free(unsafe.Pointer(c_machines))
@@ -117,6 +114,7 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 
 	daita.stopping.Add(1)
 	go daita.handleEvents(peer)
+
 	peer.daita = &daita
 
 	return true
@@ -140,23 +138,23 @@ func (daita *MaybenotDaita) Close() {
 	daita.logger.Verbosef("DAITA routines have stopped")
 }
 
-func (daita *MaybenotDaita) NonpaddingReceived(peer *Peer, packetLen uint) {
-	daita.event(peer, NonpaddingReceived, packetLen, 0)
+func (daita *MaybenotDaita) NormalReceived(peer *Peer) {
+	daita.event(peer, NormalReceived, 0)
 }
 
-func (daita *MaybenotDaita) PaddingReceived(peer *Peer, packetLen uint) {
-	daita.event(peer, PaddingReceived, packetLen, 0)
+func (daita *MaybenotDaita) PaddingReceived(peer *Peer) {
+	daita.event(peer, PaddingReceived, 0)
 }
 
-func (daita *MaybenotDaita) PaddingSent(peer *Peer, packetLen uint, machine uint64) {
-	daita.event(peer, PaddingSent, packetLen, machine)
+func (daita *MaybenotDaita) PaddingSent(peer *Peer, machine uint64) {
+	daita.event(peer, PaddingSent, machine)
 }
 
-func (daita *MaybenotDaita) NonpaddingSent(peer *Peer, packetLen uint) {
-	daita.event(peer, NonpaddingSent, packetLen, 0)
+func (daita *MaybenotDaita) NormalSent(peer *Peer) {
+	daita.event(peer, NormalSent, 0)
 }
 
-func (daita *MaybenotDaita) event(peer *Peer, eventType EventType, packetLen uint, machine uint64) {
+func (daita *MaybenotDaita) event(peer *Peer, eventType EventType, machine uint64) {
 	if daita == nil {
 		return
 	}
@@ -165,7 +163,6 @@ func (daita *MaybenotDaita) event(peer *Peer, eventType EventType, packetLen uin
 		Machine:   machine,
 		Peer:      peer.handshake.remoteStatic,
 		EventType: eventType,
-		XmitBytes: uint16(packetLen),
 	}
 
 	daita.eventsCloseLock.RLock()
@@ -189,12 +186,8 @@ func injectPadding(action Action, peer *Peer) {
 	}
 
 	elem := peer.device.NewOutboundElement()
-
-	size := action.Payload.ByteCount
-	if size < DaitaHeaderLen || size > uint16(peer.device.tun.mtu.Load()) {
-		peer.device.log.Errorf("DAITA padding action contained invalid size %v bytes", size)
-		return
-	}
+	// All packets are MTU-sized when DAITA is enabled
+	size := uint16(peer.device.tun.mtu.Load())
 
 	elem.packet = elem.buffer[MessageTransportHeaderSize : MessageTransportHeaderSize+int(size)]
 	elem.packet[0] = DaitaPaddingMarker
@@ -205,7 +198,7 @@ func injectPadding(action Action, peer *Peer) {
 		elem = nil
 		peer.SendStagedPackets()
 
-		peer.daita.PaddingSent(peer, uint(size), action.Machine)
+		peer.daita.PaddingSent(peer, action.Machine)
 	}
 }
 
@@ -266,7 +259,6 @@ func (daita *MaybenotDaita) maybenotEventToActions(event Event) []C.MaybenotActi
 	cEvent := C.MaybenotEvent{
 		machine:    C.uintptr_t(event.Machine),
 		event_type: C.uint32_t(event.EventType),
-		xmit_bytes: C.uint16_t(event.XmitBytes),
 	}
 
 	var actionsWritten C.uintptr_t
@@ -284,12 +276,12 @@ func (daita *MaybenotDaita) maybenotEventToActions(event Event) []C.MaybenotActi
 }
 
 func cActionToGo(action_c C.MaybenotAction) Action {
-	if action_c.tag != C.MaybenotAction_InjectPadding {
+	if action_c.tag != C.MaybenotAction_SendPadding {
 		panic("Unsupported tag")
 	}
 
 	// cast union to the ActionInjectPadding variant
-	padding_action := (*C.MaybenotAction_InjectPadding_Body)(unsafe.Pointer(&action_c.anon0[0]))
+	padding_action := (*C.MaybenotAction_SendPadding_Body)(unsafe.Pointer(&action_c.anon0[0]))
 
 	timeout := maybenotDurationToGoDuration(padding_action.timeout)
 
@@ -298,8 +290,7 @@ func cActionToGo(action_c C.MaybenotAction) Action {
 		Timeout:    timeout,
 		ActionType: ActionTypeInjectPadding,
 		Payload: Padding{
-			ByteCount: uint16(padding_action.size),
-			Replace:   bool(padding_action.replace),
+			Replace: bool(padding_action.replace),
 		},
 	}
 }

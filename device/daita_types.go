@@ -4,10 +4,10 @@ type EventType uint32
 
 // NOTE: discriminants must be kept in sync with `MaybenotEventType` in maybenot-ffi/maybenot.h
 const (
-	NonpaddingSent     = EventType(0)
-	NonpaddingReceived = EventType(1)
-	PaddingSent        = EventType(2)
-	PaddingReceived    = EventType(3)
+	NormalSent      = EventType(0)
+	NormalReceived  = EventType(1)
+	PaddingSent     = EventType(2)
+	PaddingReceived = EventType(3)
 )
 
 const (
@@ -24,19 +24,19 @@ const (
 
 type Daita interface {
 	Close()
-	NonpaddingSent(peer *Peer, packetLen uint)
-	NonpaddingReceived(peer *Peer, packetLen uint)
-	PaddingSent(peer *Peer, packetLen uint, machine_id uint64)
-	PaddingReceived(peer *Peer, packetLen uint)
+	NormalSent(peer *Peer)
+	NormalReceived(peer *Peer)
+	PaddingSent(peer *Peer, machine_id uint64)
+	PaddingReceived(peer *Peer)
 }
 
 func (event EventType) String() string {
 	var pretty string
 	switch event {
-	case NonpaddingSent:
-		pretty = "NonpaddingSent"
-	case NonpaddingReceived:
-		pretty = "NonpaddingReceived"
+	case NormalSent:
+		pretty = "NormalSent"
+	case NormalReceived:
+		pretty = "NormalReceived"
 	case PaddingSent:
 		pretty = "PaddingSent"
 	case PaddingReceived:
