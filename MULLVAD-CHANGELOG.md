@@ -20,6 +20,9 @@ Line wrap the file at 100 chars.                                              Th
 * **Security**: in case of vulnerabilities.
 
 ## [Unreleased]
+### Changed
+- Bump maybenot to 2.0.0.
+
 
 ## [0.1.2] - 2024-09-09
 ### Changed
