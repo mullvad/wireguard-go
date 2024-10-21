@@ -276,7 +276,7 @@ func (device *Device) RoutineReadFromTUN() {
 			peer.SendStagedPackets()
 
 			if peer.daita != nil {
-				peer.daita.NonpaddingSent(peer, uint(size))
+				peer.daita.NormalSent(peer)
 			}
 		}
 	}

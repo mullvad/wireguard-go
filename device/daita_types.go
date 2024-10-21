@@ -4,10 +4,16 @@ type EventType uint32
 
 // NOTE: discriminants must be kept in sync with `MaybenotEventType` in maybenot-ffi/maybenot.h
 const (
-	NonpaddingSent     = EventType(0)
-	NonpaddingReceived = EventType(1)
-	PaddingSent        = EventType(2)
-	PaddingReceived    = EventType(3)
+	NormalReceived  = EventType(0)
+	PaddingReceived = EventType(1)
+	TunnelReceived  = EventType(2)
+	NormalSent      = EventType(3)
+	PaddingSent     = EventType(4)
+	TunnelSent      = EventType(5)
+	BlockingBegin   = EventType(6)
+	BlockingEnd     = EventType(7)
+	TimerBegin      = EventType(8)
+	TimerEnd        = EventType(9)
 )
 
 const (
@@ -24,23 +30,35 @@ const (
 
 type Daita interface {
 	Close()
-	NonpaddingSent(peer *Peer, packetLen uint)
-	NonpaddingReceived(peer *Peer, packetLen uint)
-	PaddingSent(peer *Peer, packetLen uint, machine_id uint64)
-	PaddingReceived(peer *Peer, packetLen uint)
+	NormalSent(peer *Peer)
+	NormalReceived(peer *Peer)
+	PaddingSent(peer *Peer, machine_id uint64)
+	PaddingReceived(peer *Peer)
 }
 
 func (event EventType) String() string {
 	var pretty string
 	switch event {
-	case NonpaddingSent:
-		pretty = "NonpaddingSent"
-	case NonpaddingReceived:
-		pretty = "NonpaddingReceived"
-	case PaddingSent:
-		pretty = "PaddingSent"
+	case NormalReceived:
+		pretty = "NormalReceived"
 	case PaddingReceived:
 		pretty = "PaddingReceived"
+	case TunnelReceived:
+		pretty = "TunnelReceived"
+	case NormalSent:
+		pretty = "NormalSent"
+	case PaddingSent:
+		pretty = "PaddingSent"
+	case TunnelSent:
+		pretty = "TunnelSent"
+	case BlockingBegin:
+		pretty = "BlockingBegin"
+	case BlockingEnd:
+		pretty = "BlockingEnd"
+	case TimerBegin:
+		pretty = "TimerBegin"
+	case TimerEnd:
+		pretty = "TimerEnd"
 	}
 	return pretty
 }
