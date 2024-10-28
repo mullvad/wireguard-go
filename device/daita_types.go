@@ -4,10 +4,16 @@ type EventType uint32
 
 // NOTE: discriminants must be kept in sync with `MaybenotEventType` in maybenot-ffi/maybenot.h
 const (
-	NormalSent      = EventType(0)
-	NormalReceived  = EventType(1)
-	PaddingSent     = EventType(2)
-	PaddingReceived = EventType(3)
+	NormalReceived  = EventType(0)
+	PaddingReceived = EventType(1)
+	TunnelReceived  = EventType(2)
+	NormalSent      = EventType(3)
+	PaddingSent     = EventType(4)
+	TunnelSent      = EventType(5)
+	BlockingBegin   = EventType(6)
+	BlockingEnd     = EventType(7)
+	TimerBegin      = EventType(8)
+	TimerEnd        = EventType(9)
 )
 
 const (
@@ -33,14 +39,26 @@ type Daita interface {
 func (event EventType) String() string {
 	var pretty string
 	switch event {
-	case NormalSent:
-		pretty = "NormalSent"
 	case NormalReceived:
 		pretty = "NormalReceived"
-	case PaddingSent:
-		pretty = "PaddingSent"
 	case PaddingReceived:
 		pretty = "PaddingReceived"
+	case TunnelReceived:
+		pretty = "TunnelReceived"
+	case NormalSent:
+		pretty = "NormalSent"
+	case PaddingSent:
+		pretty = "PaddingSent"
+	case TunnelSent:
+		pretty = "TunnelSent"
+	case BlockingBegin:
+		pretty = "BlockingBegin"
+	case BlockingEnd:
+		pretty = "BlockingEnd"
+	case TimerBegin:
+		pretty = "TimerBegin"
+	case TimerEnd:
+		pretty = "TimerEnd"
 	}
 	return pretty
 }
