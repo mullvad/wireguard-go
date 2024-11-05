@@ -45,12 +45,13 @@ import (
 
 type QueueOutboundElement struct {
 	sync.Mutex
-	buffer    *[MaxMessageSize]byte // slice holding the packet data
-	packet    []byte                // slice of "buffer" (always!)
-	nonce     uint64                // nonce for encryption
-	keypair   *Keypair              // keypair for encryption
-	peer      *Peer                 // related peer
-	keepalive bool                  // is a keepalive message
+	buffer       *[MaxMessageSize]byte // slice holding the packet data
+	packet       []byte                // slice of "buffer" (always!)
+	nonce        uint64                // nonce for encryption
+	keypair      *Keypair              // keypair for encryption
+	peer         *Peer                 // related peer
+	keepalive    bool                  // is a keepalive message
+	daitaPadding bool
 }
 
 func (device *Device) NewOutboundElement() *QueueOutboundElement {
@@ -59,6 +60,7 @@ func (device *Device) NewOutboundElement() *QueueOutboundElement {
 	elem.Mutex = sync.Mutex{}
 	elem.nonce = 0
 	elem.keepalive = false
+	elem.daitaPadding = false
 	// keypair and peer were cleared (if necessary) by clearPointers.
 	return elem
 }
@@ -80,10 +82,12 @@ func (peer *Peer) SendKeepalive() {
 	if len(peer.queue.staged) == 0 && peer.isRunning.Load() {
 		elem := peer.device.NewOutboundElement()
 		elem.keepalive = true
+		peer.OutboundPacketsInc()
 		select {
 		case peer.queue.staged <- elem:
 			peer.device.log.Verbosef("%v - Sending keepalive packet", peer)
 		default:
+			peer.OutboundPacketsDec()
 			peer.device.PutMessageBuffer(elem.buffer)
 			peer.device.PutOutboundElement(elem)
 		}
@@ -272,6 +276,7 @@ func (device *Device) RoutineReadFromTUN() {
 			continue
 		}
 		if peer.isRunning.Load() {
+			peer.OutboundPacketsInc()
 			peer.StagePacket(elem)
 			elem = nil
 			peer.SendStagedPackets()
@@ -292,6 +297,7 @@ func (peer *Peer) StagePacket(elem *QueueOutboundElement) {
 		}
 		select {
 		case tooOld := <-peer.queue.staged:
+			peer.OutboundAndReplacedPacketsMaybeDec(tooOld)
 			peer.device.PutMessageBuffer(tooOld.buffer)
 			peer.device.PutOutboundElement(tooOld)
 		default:
@@ -348,6 +354,7 @@ top:
 				peer.queue.outbound.c <- elem
 				peer.device.queue.encryption.c <- elem
 			} else {
+				peer.OutboundAndReplacedPacketsMaybeDec(elem)
 				peer.device.PutMessageBuffer(elem.buffer)
 				peer.device.PutOutboundElement(elem)
 			}
@@ -361,6 +368,7 @@ func (peer *Peer) FlushStagedPackets() {
 	for {
 		select {
 		case elem := <-peer.queue.staged:
+			peer.OutboundAndReplacedPacketsMaybeDec(elem)
 			peer.device.PutMessageBuffer(elem.buffer)
 			peer.device.PutOutboundElement(elem)
 		default:
@@ -442,8 +450,10 @@ func (peer *Peer) RoutineSequentialSender() {
 		if elem == nil {
 			return
 		}
+
 		elem.Lock()
 		if !peer.isRunning.Load() {
+			peer.OutboundAndReplacedPacketsMaybeDec(elem)
 			// peer has been stopped; return re-usable elems to the shared pool.
 			// This is an optimization only. It is possible for the peer to be stopped
 			// immediately after this check, in which case, elem will get processed.
@@ -461,6 +471,7 @@ func (peer *Peer) RoutineSequentialSender() {
 		// send message and return buffer to pool
 
 		err := peer.SendBuffer(elem.packet)
+		peer.OutboundAndReplacedPacketsMaybeDec(elem)
 		if !elem.keepalive {
 			peer.timersDataSent()
 		}
