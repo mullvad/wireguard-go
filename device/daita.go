@@ -231,7 +231,15 @@ func injectPadding(action Action, peer *Peer) {
 		return
 	}
 
+	if action.Replace && peer.HasReplaceablePackets() {
+		peer.ReplacedPacketsInc()
+		peer.daita.PaddingSent(peer, action.Machine)
+		return
+	}
+
 	elem := peer.device.NewOutboundElement()
+	elem.daitaPadding = true
+
 	// All packets are MTU-sized when DAITA is enabled
 	size := uint16(peer.device.tun.mtu.Load())
 
