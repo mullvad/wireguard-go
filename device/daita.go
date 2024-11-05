@@ -23,9 +23,28 @@ type MaybenotDaita struct {
 	actions         chan Action
 	maybenot        *C.MaybenotFramework
 	newActionsBuf   []C.MaybenotAction
-	paddingQueue    map[uint64]*time.Timer // Map from machine to queued padding packets
+	paddingQueue    map[uint64]*time.Timer   // Map from machine to queued padding packets
+	machineTimers   map[uint64]*MachineTimer // Map from machine to machine timer
 	logger          *Logger
 	stopping        sync.WaitGroup // waitgroup for handleEvents and HandleDaitaActions
+}
+
+type MachineTimer struct {
+	started time.Time
+	timeout time.Duration
+	timer   *time.Timer
+}
+
+func (timer *MachineTimer) Stop() bool {
+	return timer.timer.Stop()
+}
+
+func newMachineTimer(timeout time.Duration, callback func()) *MachineTimer {
+	return &MachineTimer{
+		started: time.Now(),
+		timeout: timeout,
+		timer:   time.AfterFunc(timeout, callback),
+	}
 }
 
 type Event struct {
@@ -58,7 +77,7 @@ type Action struct {
 	Timer C.MaybenotTimer
 
 	// The time at which the action should be performed
-	// Used for ActionTypes: SendPadding, BlockOutgoing, UpdateTimer
+	// Used for ActionTypes: SendPadding, BlockOutgoing
 	Timeout time.Duration
 
 	// Used for ActionTypes: BlockOutgoing, UpdateTimer
@@ -113,6 +132,7 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 		maybenot:      maybenot,
 		newActionsBuf: make([]C.MaybenotAction, numMachines),
 		paddingQueue:  map[uint64]*time.Timer{},
+		machineTimers: map[uint64]*MachineTimer{},
 		logger:        peer.device.log,
 	}
 
@@ -132,6 +152,8 @@ func (daita *MaybenotDaita) Close() {
 	close(daita.events)
 	daita.eventsClosed = true
 	daita.eventsCloseLock.Unlock()
+
+	// TODO: stop machine timers
 
 	for _, queuedPadding := range daita.paddingQueue {
 		if queuedPadding.Stop() {
@@ -156,6 +178,14 @@ func (daita *MaybenotDaita) PaddingSent(peer *Peer, machine uint64) {
 
 func (daita *MaybenotDaita) NormalSent(peer *Peer) {
 	daita.event(peer, NormalSent, 0)
+}
+
+func (daita *MaybenotDaita) timerBegin(peer *Peer, machine uint64) {
+	daita.event(peer, TimerBegin, machine)
+}
+
+func (daita *MaybenotDaita) timerEnd(peer *Peer, machine uint64) {
+	daita.event(peer, TimerEnd, machine)
 }
 
 func (daita *MaybenotDaita) event(peer *Peer, eventType EventType, machine uint64) {
@@ -230,12 +260,36 @@ func (daita *MaybenotDaita) handleEvent(event Event, peer *Peer) {
 		switch action.ActionType {
 		case C.MaybenotAction_Cancel:
 			machine := action.Machine
-			// If padding is queued for the machine, cancel it
-			if queuedPadding, ok := daita.paddingQueue[machine]; ok {
-				if queuedPadding.Stop() {
-					daita.stopping.Done()
+
+			switch action.Timer {
+			case C.MaybenotTimer_Action:
+				// Cancel padding queue timer
+				if queuedPadding, ok := daita.paddingQueue[machine]; ok {
+					if queuedPadding.Stop() {
+						daita.stopping.Done()
+					}
+				}
+			case C.MaybenotTimer_Internal:
+				// Cancel machine timer
+				if timer, ok := daita.machineTimers[action.Machine]; ok {
+					timer.Stop()
+					// FIXME: handle wait group
+				}
+			case C.MaybenotTimer_All:
+				// Cancel machine timer
+				if timer, ok := daita.machineTimers[action.Machine]; ok {
+					timer.Stop()
+					// FIXME: handle wait group
+				}
+
+				// Cancel padding queue timer
+				if queuedPadding, ok := daita.paddingQueue[machine]; ok {
+					if queuedPadding.Stop() {
+						daita.stopping.Done()
+					}
 				}
 			}
+
 		case C.MaybenotAction_SendPadding:
 			// Check if a padding packet was already queued for the machine
 			// If so, try to cancel it
@@ -254,11 +308,48 @@ func (daita *MaybenotDaita) handleEvent(event Event, peer *Peer) {
 		case C.MaybenotAction_BlockOutgoing:
 			// TODO: implement BlockOutgoing
 			daita.logger.Errorf("ignoring BlockOutgoing action, unimplemented")
-			continue
 		case C.MaybenotAction_UpdateTimer:
-			// TODO: implement UpdateTimer
-			daita.logger.Errorf("ignoring UpdateTimer action, unimplemented")
-			continue
+			// Check if a padding packet was already queued for the machine
+			timer, timerWasQueued := daita.machineTimers[action.Machine]
+
+			// Start timer if it does not exist
+			if !timerWasQueued {
+				daita.timerBegin(peer, action.Machine)
+				daita.machineTimers[action.Machine] =
+					newMachineTimer(action.Timeout, func() {
+						daita.timerEnd(peer, action.Machine)
+					})
+				break
+			}
+
+			// FIXME: handle stopping
+
+			shouldReplace := false
+			if action.Replace {
+				shouldReplace = true
+			} else {
+				elapsed := time.Since(timer.started)
+				if elapsed >= timer.timeout {
+					// Timer has (or should have) already fired
+					shouldReplace = true
+				} else {
+					timeLeft := timer.timeout - elapsed
+
+					// Replace timer if action duration is greater than the time left
+					shouldReplace = action.Duration > timeLeft
+				}
+			}
+
+			// Replace or start new timer
+			if shouldReplace {
+				timer.Stop()
+
+				daita.timerBegin(peer, action.Machine)
+				daita.machineTimers[action.Machine] =
+					newMachineTimer(action.Timeout, func() {
+						daita.timerEnd(peer, action.Machine)
+					})
+			}
 		}
 	}
 }
