@@ -163,6 +163,10 @@ func (device *Device) RoutineReceiveIncoming(recv conn.ReceiveFunc) {
 
 			// add to decryption queues
 			if peer.isRunning.Load() {
+				if peer.daita != nil {
+					peer.daita.TunnelReceived(peer)
+				}
+
 				peer.queue.inbound.c <- elem
 				device.queue.decryption.c <- elem
 				buffer = device.GetMessageBuffer()
