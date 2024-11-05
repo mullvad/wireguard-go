@@ -472,6 +472,10 @@ func (peer *Peer) RoutineSequentialSender() {
 			continue
 		}
 
+		if peer.daita != nil {
+			peer.daita.TunnelSent(peer)
+		}
+
 		peer.keepKeyFreshSending()
 	}
 }
