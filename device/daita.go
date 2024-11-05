@@ -90,7 +90,7 @@ type Action struct {
 	Bypass bool
 }
 
-func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapacity uint, maxPaddingBytes float64, maxBlockingBytes float64) bool {
+func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapacity uint, maxPaddingFrac float64, maxBlockingFrac float64) bool {
 	peer.Lock()
 	defer peer.Unlock()
 
@@ -111,11 +111,11 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 	var maybenot *C.MaybenotFramework
 	c_machines := C.CString(machines)
 
-	c_maxPaddingBytes := C.double(maxPaddingBytes)
-	c_maxBlockingBytes := C.double(maxBlockingBytes)
+	c_maxPaddingFrac := C.double(maxPaddingFrac)
+	c_maxBlockingFrac := C.double(maxBlockingFrac)
 
 	maybenot_result := C.maybenot_start(
-		c_machines, c_maxPaddingBytes, c_maxBlockingBytes,
+		c_machines, c_maxPaddingFrac, c_maxBlockingFrac,
 		&maybenot,
 	)
 	C.free(unsafe.Pointer(c_machines))
