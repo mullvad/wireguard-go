@@ -471,6 +471,11 @@ func (peer *Peer) RoutineSequentialSender() {
 			continue
 		}
 
+		// TODO: should keepalives be ignored?
+		if peer.daita != nil {
+			peer.daita.TunnelSent(peer)
+		}
+
 		peer.keepKeyFreshSending()
 	}
 }

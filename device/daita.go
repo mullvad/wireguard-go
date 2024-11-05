@@ -180,6 +180,14 @@ func (daita *MaybenotDaita) NormalSent(peer *Peer) {
 	daita.event(peer, NormalSent, 0)
 }
 
+func (daita *MaybenotDaita) TunnelSent(peer *Peer) {
+	daita.event(peer, TunnelSent, 0)
+}
+
+func (daita *MaybenotDaita) TunnelReceived(peer *Peer) {
+	daita.event(peer, TunnelReceived, 0)
+}
+
 func (daita *MaybenotDaita) timerBegin(peer *Peer, machine uint64) {
 	daita.event(peer, TimerBegin, machine)
 }
