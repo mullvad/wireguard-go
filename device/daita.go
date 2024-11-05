@@ -231,6 +231,11 @@ func injectPadding(action Action, peer *Peer) {
 		return
 	}
 
+	if peer.hasEgressQueue() {
+		peer.daita.PaddingSent(peer, action.Machine)
+		return
+	}
+
 	elem := peer.device.NewOutboundElement()
 	// All packets are MTU-sized when DAITA is enabled
 	size := uint16(peer.device.tun.mtu.Load())

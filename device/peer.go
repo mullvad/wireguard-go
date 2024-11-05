@@ -56,6 +56,7 @@ type Peer struct {
 
 	daita              Daita
 	constantPacketSize bool
+	pendingEgress      atomic.Int32
 }
 
 func (device *Device) NewPeer(pk NoisePublicKey) (*Peer, error) {
@@ -220,6 +221,7 @@ func (peer *Peer) ZeroAndFlushAll() {
 	handshake.mutex.Unlock()
 
 	peer.FlushStagedPackets()
+	peer.pendingEgress.Store(0)
 }
 
 func (peer *Peer) ExpireCurrentKeypairs() {
@@ -275,4 +277,16 @@ func (peer *Peer) SetEndpointFromPacket(endpoint conn.Endpoint) {
 	peer.Lock()
 	peer.endpoint = endpoint
 	peer.Unlock()
+}
+
+func (peer *Peer) pendingEgressAddRef() {
+	peer.pendingEgress.Add(1)
+}
+func (peer *Peer) pendingEgressRemoveRef() {
+	if peer.pendingEgress.Add(-1) < 0 {
+		panic("pendingEgress underflow")
+	}
+}
+func (peer *Peer) hasEgressQueue() bool {
+	return len(peer.queue.staged) != 0 || peer.pendingEgress.Load() != 0
 }
