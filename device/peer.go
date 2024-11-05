@@ -56,6 +56,8 @@ type Peer struct {
 
 	daita              Daita
 	constantPacketSize bool
+	outboundPackets    atomic.Int32
+	replacedPackets    atomic.Int32
 }
 
 func (device *Device) NewPeer(pk NoisePublicKey) (*Peer, error) {
@@ -220,6 +222,7 @@ func (peer *Peer) ZeroAndFlushAll() {
 	handshake.mutex.Unlock()
 
 	peer.FlushStagedPackets()
+	peer.resetOutboundAndReplaced()
 }
 
 func (peer *Peer) ExpireCurrentKeypairs() {
@@ -275,4 +278,47 @@ func (peer *Peer) SetEndpointFromPacket(endpoint conn.Endpoint) {
 	peer.Lock()
 	peer.endpoint = endpoint
 	peer.Unlock()
+}
+
+func (peer *Peer) OutboundPacketsInc() {
+	peer.outboundPackets.Add(1)
+}
+
+func (peer *Peer) OutboundPacketsDec() {
+	if peer.outboundPackets.Add(-1) < 0 {
+		panic("queuedPackets underflow")
+	}
+}
+
+func (peer *Peer) ReplacedPacketsInc() {
+	peer.replacedPackets.Add(1)
+}
+
+func (peer *Peer) OutboundAndReplacedPacketsMaybeDec(elem *QueueOutboundElement) {
+	if elem.daitaPadding {
+		return
+	}
+
+	// Saturating sub
+	for {
+		current_val := peer.replacedPackets.Load()
+		if current_val <= 0 {
+			break
+		}
+		if peer.replacedPackets.CompareAndSwap(current_val, current_val-1) {
+			break
+		}
+	}
+	if peer.outboundPackets.Add(-1) < 0 {
+		panic("queuedPackets underflow")
+	}
+}
+
+func (peer *Peer) resetOutboundAndReplaced() {
+	peer.outboundPackets.Store(0)
+	peer.replacedPackets.Store(0)
+}
+
+func (peer *Peer) HasReplaceablePackets() bool {
+	return peer.outboundPackets.Load() > peer.replacedPackets.Load()
 }
