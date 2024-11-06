@@ -153,7 +153,11 @@ func (daita *MaybenotDaita) Close() {
 	daita.eventsClosed = true
 	daita.eventsCloseLock.Unlock()
 
-	// TODO: stop machine timers
+	for _, timer := range daita.machineTimers {
+		if timer.Stop() {
+			daita.stopping.Done()
+		}
+	}
 
 	for _, queuedPadding := range daita.paddingQueue {
 		if queuedPadding.Stop() {
@@ -271,31 +275,12 @@ func (daita *MaybenotDaita) handleEvent(event Event, peer *Peer) {
 
 			switch action.Timer {
 			case C.MaybenotTimer_Action:
-				// Cancel padding queue timer
-				if queuedPadding, ok := daita.paddingQueue[machine]; ok {
-					if queuedPadding.Stop() {
-						daita.stopping.Done()
-					}
-				}
+				daita.stopPaddingTimer(machine)
 			case C.MaybenotTimer_Internal:
-				// Cancel machine timer
-				if timer, ok := daita.machineTimers[action.Machine]; ok {
-					timer.Stop()
-					// FIXME: handle wait group
-				}
+				daita.stopMachineTimer(machine)
 			case C.MaybenotTimer_All:
-				// Cancel machine timer
-				if timer, ok := daita.machineTimers[action.Machine]; ok {
-					timer.Stop()
-					// FIXME: handle wait group
-				}
-
-				// Cancel padding queue timer
-				if queuedPadding, ok := daita.paddingQueue[machine]; ok {
-					if queuedPadding.Stop() {
-						daita.stopping.Done()
-					}
-				}
+				daita.stopMachineTimer(machine)
+				daita.stopPaddingTimer(machine)
 			}
 
 		case C.MaybenotAction_SendPadding:
@@ -349,16 +334,36 @@ func (daita *MaybenotDaita) handleEvent(event Event, peer *Peer) {
 
 			// Replace or start new timer
 			if startNewTimer {
-				if timerWasQueued {
-					timer.Stop()
+				if !timerWasQueued || !timer.Stop() {
+					// If the previous timer fired or didn't run, increment stopping wait group
+					daita.stopping.Add(1)
 				}
 
 				daita.timerBegin(peer, action.Machine)
 				daita.machineTimers[action.Machine] =
 					newMachineTimer(action.Timeout, func() {
+						// Decrement wait group counter
+						defer daita.stopping.Done()
+
 						daita.timerEnd(peer, action.Machine)
 					})
 			}
+		}
+	}
+}
+
+func (daita *MaybenotDaita) stopMachineTimer(machine uint64) {
+	if timer, ok := daita.machineTimers[machine]; ok {
+		if timer.Stop() {
+			daita.stopping.Done()
+		}
+	}
+}
+
+func (daita *MaybenotDaita) stopPaddingTimer(machine uint64) {
+	if queuedPadding, ok := daita.paddingQueue[machine]; ok {
+		if queuedPadding.Stop() {
+			daita.stopping.Done()
 		}
 	}
 }
