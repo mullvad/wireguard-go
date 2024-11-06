@@ -56,7 +56,8 @@ type Peer struct {
 
 	daita              Daita
 	constantPacketSize bool
-	pendingEgress      atomic.Int32
+	queuedPackets      atomic.Int32
+	replacedPackets    atomic.Int32
 }
 
 func (device *Device) NewPeer(pk NoisePublicKey) (*Peer, error) {
@@ -221,7 +222,7 @@ func (peer *Peer) ZeroAndFlushAll() {
 	handshake.mutex.Unlock()
 
 	peer.FlushStagedPackets()
-	peer.pendingEgress.Store(0)
+	peer.queuedPackets.Store(0)
 }
 
 func (peer *Peer) ExpireCurrentKeypairs() {
@@ -279,14 +280,28 @@ func (peer *Peer) SetEndpointFromPacket(endpoint conn.Endpoint) {
 	peer.Unlock()
 }
 
-func (peer *Peer) pendingEgressAddRef() {
-	peer.pendingEgress.Add(1)
+func (peer *Peer) queuedPacketsAddRef() {
+	peer.queuedPackets.Add(1)
 }
-func (peer *Peer) pendingEgressRemoveRef() {
-	if peer.pendingEgress.Add(-1) < 0 {
-		panic("pendingEgress underflow")
+
+func (peer *Peer) ReplacedPacketsAddRef() {
+	peer.replacedPackets.Add(1)
+}
+
+func (peer *Peer) queuedPacketsRemoveRef() {
+	// Saturating sub
+	for {
+		current_val := peer.replacedPackets.Load()
+		if current_val > 0 {
+			if peer.replacedPackets.CompareAndSwap(current_val, current_val-1) {
+				break
+			}
+		}
+	}
+	if peer.queuedPackets.Add(-1) < 0 {
+		panic("queuedPackets underflow")
 	}
 }
-func (peer *Peer) hasEgressQueue() bool {
-	return len(peer.queue.staged) != 0 || peer.pendingEgress.Load() != 0
+func (peer *Peer) HasReplaceablePackets() bool {
+	return (int32(len(peer.queue.staged)) + peer.queuedPackets.Load() - peer.replacedPackets.Load()) > 0
 }

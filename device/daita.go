@@ -231,7 +231,8 @@ func injectPadding(action Action, peer *Peer) {
 		return
 	}
 
-	if peer.hasEgressQueue() {
+	if peer.HasReplaceablePackets() {
+		peer.ReplacedPacketsAddRef()
 		peer.daita.PaddingSent(peer, action.Machine)
 		return
 	}

@@ -320,7 +320,7 @@ top:
 				peer.StagePacket(elem) // XXX: Out of order, but we can't front-load go chans
 				goto top
 			}
-			peer.pendingEgressAddRef()
+			peer.queuedPacketsAddRef()
 
 			if peer.constantPacketSize {
 				mtu := int(peer.device.tun.mtu.Load())
@@ -348,7 +348,7 @@ top:
 				peer.queue.outbound.c <- elem
 				peer.device.queue.encryption.c <- elem
 			} else {
-				peer.pendingEgressRemoveRef()
+				peer.queuedPacketsRemoveRef()
 				peer.device.PutMessageBuffer(elem.buffer)
 				peer.device.PutOutboundElement(elem)
 			}
@@ -446,7 +446,7 @@ func (peer *Peer) RoutineSequentialSender() {
 
 		elem.Lock()
 		if !peer.isRunning.Load() {
-			peer.pendingEgressRemoveRef()
+			peer.queuedPacketsRemoveRef()
 			// peer has been stopped; return re-usable elems to the shared pool.
 			// This is an optimization only. It is possible for the peer to be stopped
 			// immediately after this check, in which case, elem will get processed.
@@ -464,7 +464,7 @@ func (peer *Peer) RoutineSequentialSender() {
 		// send message and return buffer to pool
 
 		err := peer.SendBuffer(elem.packet)
-		peer.pendingEgressRemoveRef() // NOTE: decrement for keepalives?
+		peer.queuedPacketsRemoveRef() // NOTE: decrement for keepalives?
 		if !elem.keepalive {
 			peer.timersDataSent()
 		}
