@@ -320,37 +320,38 @@ func (daita *MaybenotDaita) handleEvent(event Event, peer *Peer) {
 			// Check if a padding packet was already queued for the machine
 			timer, timerWasQueued := daita.machineTimers[action.Machine]
 
-			// Start timer if it does not exist
-			if !timerWasQueued {
-				daita.timerBegin(peer, action.Machine)
-				daita.machineTimers[action.Machine] =
-					newMachineTimer(action.Timeout, func() {
-						daita.timerEnd(peer, action.Machine)
-					})
-				break
-			}
-
 			// FIXME: handle stopping
 
-			shouldReplace := false
-			if action.Replace {
-				shouldReplace = true
+			startNewTimer := false
+
+			if timerWasQueued {
+				// Start timer if it does not exist
+				startNewTimer = true
 			} else {
-				elapsed := time.Since(timer.started)
-				if elapsed >= timer.timeout {
-					// Timer has (or should have) already fired
+				shouldReplace := false
+				if action.Replace {
 					shouldReplace = true
 				} else {
-					timeLeft := timer.timeout - elapsed
+					elapsed := time.Since(timer.started)
+					if elapsed >= timer.timeout {
+						// Timer has (or should have) already fired
+						shouldReplace = true
+					} else {
+						timeLeft := timer.timeout - elapsed
 
-					// Replace timer if action duration is greater than the time left
-					shouldReplace = action.Duration > timeLeft
+						// Replace timer if action duration is greater than the time left
+						shouldReplace = action.Duration > timeLeft
+					}
 				}
+
+				startNewTimer = shouldReplace
 			}
 
 			// Replace or start new timer
-			if shouldReplace {
-				timer.Stop()
+			if startNewTimer {
+				if timerWasQueued {
+					timer.Stop()
+				}
 
 				daita.timerBegin(peer, action.Machine)
 				daita.machineTimers[action.Machine] =
