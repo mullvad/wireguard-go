@@ -232,7 +232,7 @@ func injectPadding(action Action, peer *Peer) {
 	}
 
 	if peer.HasReplaceablePackets() {
-		peer.ReplacedPacketsAddRef()
+		peer.ReplacedPacketsInc()
 		peer.daita.PaddingSent(peer, action.Machine)
 		return
 	}

@@ -81,6 +81,7 @@ func (peer *Peer) SendKeepalive() {
 		elem.keepalive = true
 		select {
 		case peer.queue.staged <- elem:
+			peer.OutboundPacketsInc()
 			peer.device.log.Verbosef("%v - Sending keepalive packet", peer)
 		default:
 			peer.device.PutMessageBuffer(elem.buffer)
@@ -291,6 +292,7 @@ func (peer *Peer) StagePacket(elem *QueueOutboundElement) {
 		}
 		select {
 		case tooOld := <-peer.queue.staged:
+			peer.OutboundAndReplacedPacketsDec()
 			peer.device.PutMessageBuffer(tooOld.buffer)
 			peer.device.PutOutboundElement(tooOld)
 		default:
@@ -317,10 +319,10 @@ top:
 			elem.nonce = keypair.sendNonce.Add(1) - 1
 			if elem.nonce >= RejectAfterMessages {
 				keypair.sendNonce.Store(RejectAfterMessages)
+				peer.OutboundPacketsInc()
 				peer.StagePacket(elem) // XXX: Out of order, but we can't front-load go chans
 				goto top
 			}
-			peer.queuedPacketsAddRef()
 
 			if peer.constantPacketSize {
 				mtu := int(peer.device.tun.mtu.Load())
@@ -348,7 +350,7 @@ top:
 				peer.queue.outbound.c <- elem
 				peer.device.queue.encryption.c <- elem
 			} else {
-				peer.queuedPacketsRemoveRef()
+				peer.OutboundAndReplacedPacketsDec()
 				peer.device.PutMessageBuffer(elem.buffer)
 				peer.device.PutOutboundElement(elem)
 			}
@@ -362,6 +364,7 @@ func (peer *Peer) FlushStagedPackets() {
 	for {
 		select {
 		case elem := <-peer.queue.staged:
+			peer.OutboundAndReplacedPacketsDec()
 			peer.device.PutMessageBuffer(elem.buffer)
 			peer.device.PutOutboundElement(elem)
 		default:
@@ -446,7 +449,7 @@ func (peer *Peer) RoutineSequentialSender() {
 
 		elem.Lock()
 		if !peer.isRunning.Load() {
-			peer.queuedPacketsRemoveRef()
+			peer.OutboundAndReplacedPacketsDec()
 			// peer has been stopped; return re-usable elems to the shared pool.
 			// This is an optimization only. It is possible for the peer to be stopped
 			// immediately after this check, in which case, elem will get processed.
@@ -464,7 +467,7 @@ func (peer *Peer) RoutineSequentialSender() {
 		// send message and return buffer to pool
 
 		err := peer.SendBuffer(elem.packet)
-		peer.queuedPacketsRemoveRef() // NOTE: decrement for keepalives?
+		peer.OutboundAndReplacedPacketsDec()
 		if !elem.keepalive {
 			peer.timersDataSent()
 		}
