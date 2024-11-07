@@ -82,11 +82,12 @@ func (peer *Peer) SendKeepalive() {
 	if len(peer.queue.staged) == 0 && peer.isRunning.Load() {
 		elem := peer.device.NewOutboundElement()
 		elem.keepalive = true
+		peer.OutboundPacketsInc()
 		select {
 		case peer.queue.staged <- elem:
-			peer.OutboundPacketsInc()
 			peer.device.log.Verbosef("%v - Sending keepalive packet", peer)
 		default:
+			peer.OutboundPacketsDec()
 			peer.device.PutMessageBuffer(elem.buffer)
 			peer.device.PutOutboundElement(elem)
 		}
