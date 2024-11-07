@@ -315,7 +315,7 @@ func (daita *MaybenotDaita) handleEvent(event Event, peer *Peer) {
 
 			startNewTimer := false
 
-			if timerWasQueued {
+			if !timerWasQueued {
 				// Start timer if it does not exist
 				startNewTimer = true
 			} else {
