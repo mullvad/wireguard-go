@@ -20,6 +20,10 @@ Line wrap the file at 100 chars.                                              Th
 * **Security**: in case of vulnerabilities.
 
 ## [Unreleased]
+### Fixed
+- Fix keepalive flag not being reset for pooled packets. This could result in fewer client
+  handshakes over time.
+
 
 ## [0.1.3] - 2024-10-29
 ### Changed
