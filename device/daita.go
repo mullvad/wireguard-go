@@ -339,7 +339,7 @@ func (daita *MaybenotDaita) handleEvent(event Event, peer *Peer) {
 
 				daita.timerBegin(peer, action.Machine)
 				daita.machineTimers[action.Machine] =
-					newMachineTimer(action.Timeout, func() {
+					newMachineTimer(action.Duration, func() {
 						// Decrement wait group counter
 						defer daita.stopping.Done()
 
