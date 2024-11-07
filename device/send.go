@@ -58,6 +58,7 @@ func (device *Device) NewOutboundElement() *QueueOutboundElement {
 	elem.buffer = device.GetMessageBuffer()
 	elem.Mutex = sync.Mutex{}
 	elem.nonce = 0
+	elem.keepalive = false
 	// keypair and peer were cleared (if necessary) by clearPointers.
 	return elem
 }
