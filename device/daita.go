@@ -20,19 +20,19 @@ type MaybenotDaita struct {
 	events          chan Event
 	eventsClosed    bool
 	eventsCloseLock sync.RWMutex
+	eventsCBuf      []C.MaybenotEvent
 	actions         chan Action
 	maybenot        *C.MaybenotFramework
 	newActionsBuf   []C.MaybenotAction
 	paddingQueue    map[uint64]*time.Timer   // Map from machine to queued padding packets
 	machineTimers   map[uint64]*MachineTimer // Map from machine to machine timer
 	logger          *Logger
-	stopping        sync.WaitGroup // waitgroup for handleEvents and HandleDaitaActions
+	stopping        sync.WaitGroup // waitgroup for runEventLoop and HandleDaitaActions
 }
 
 type MachineTimer struct {
-	started time.Time
-	timeout time.Duration
-	timer   *time.Timer
+	completeAt time.Time
+	timer      *time.Timer
 }
 
 func (timer *MachineTimer) Stop() bool {
@@ -41,9 +41,8 @@ func (timer *MachineTimer) Stop() bool {
 
 func newMachineTimer(timeout time.Duration, callback func()) *MachineTimer {
 	return &MachineTimer{
-		started: time.Now(),
-		timeout: timeout,
-		timer:   time.AfterFunc(timeout, callback),
+		completeAt: time.Now().Add(timeout),
+		timer:      time.AfterFunc(timeout, callback),
 	}
 }
 
@@ -60,7 +59,7 @@ const (
 	ERROR_INTERMITTENT_FAILURE = -2
 )
 
-// TODO: Consider using an Action interface, and defining MaybenotDaita.handleEvent as a method on
+// TODO: Consider using an Action interface, and defining MaybenotDaita.handleEvents as a method on
 // that interface. Each Action enum variant could be an implenentation on that interface, that way
 // we wouldn't have to flatten the Action enum into this ugly struct.
 // Performance may be a concern though.
@@ -128,6 +127,7 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 	numMachines := C.maybenot_num_machines(maybenot)
 	daita := MaybenotDaita{
 		events:        make(chan Event, eventsCapacity),
+		eventsCBuf:    make([]C.MaybenotEvent, eventsCapacity),
 		eventsClosed:  false,
 		maybenot:      maybenot,
 		newActionsBuf: make([]C.MaybenotAction, numMachines),
@@ -137,7 +137,7 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 	}
 
 	daita.stopping.Add(1)
-	go daita.handleEvents(peer)
+	go daita.runEventLoop(peer)
 
 	peer.daita = &daita
 
@@ -256,24 +256,50 @@ func injectPadding(action Action, peer *Peer) {
 	}
 }
 
-func (daita *MaybenotDaita) handleEvents(peer *Peer) {
+func (daita *MaybenotDaita) runEventLoop(peer *Peer) {
 	defer func() {
 		C.maybenot_stop(daita.maybenot)
 		daita.stopping.Done()
 		daita.logger.Verbosef("%v - DAITA: event handler - stopped", peer)
 	}()
 
+	events := make([]Event, len(daita.events))
+
 	for {
+		events = events[:0]
+
 		event, more := <-daita.events
 		if !more {
 			return
 		}
 
-		daita.handleEvent(event, peer)
+		events = append(events, event)
+
+		// Drain remaining events
+	HandleEvents:
+		for {
+			select {
+			case event, more := <-daita.events:
+				if !more {
+					daita.logger.Verbosef("%v - DAITA: dropping %d unhandled events", peer, len(events))
+					return
+				}
+				events = append(events, event)
+
+				// Make sure not to exceed the maximum C buffer capacity
+				if len(events) >= len(daita.eventsCBuf) {
+					break HandleEvents
+				}
+			default:
+				break HandleEvents
+			}
+		}
+
+		daita.handleEvents(events, peer)
 	}
 }
 
-func (daita *MaybenotDaita) handleEvent(event Event, peer *Peer) {
+func (daita *MaybenotDaita) handleEvents(event []Event, peer *Peer) {
 	for _, cAction := range daita.maybenotEventToActions(event) {
 		action := cActionToGo(cAction)
 
@@ -313,35 +339,22 @@ func (daita *MaybenotDaita) handleEvent(event Event, peer *Peer) {
 			// Check if a padding packet was already queued for the machine
 			timer, timerWasQueued := daita.machineTimers[action.Machine]
 
-			startNewTimer := false
-
-			if !timerWasQueued {
-				// Start timer if it does not exist
+			var startNewTimer bool
+			if !timerWasQueued || action.Replace {
+				// Always start timer if it does not exist or if the replace flag is set
 				startNewTimer = true
 			} else {
-				shouldReplace := false
-				if action.Replace {
-					shouldReplace = true
-				} else {
-					elapsed := time.Since(timer.started)
-					if elapsed >= timer.timeout {
-						// Timer has (or should have) already fired
-						shouldReplace = true
-					} else {
-						timeLeft := timer.timeout - elapsed
-
-						// Replace timer if action duration is greater than the time left
-						shouldReplace = action.Duration > timeLeft
-					}
-				}
-
-				startNewTimer = shouldReplace
+				now := time.Now()
+				// Replace timer if it (should have) already fired
+				// or if the action duration is greater than the time left
+				startNewTimer = timer.completeAt.Before(now) || (action.Duration > timer.completeAt.Sub(now))
 			}
 
 			// Replace or start new timer
 			if startNewTimer {
 				if !timerWasQueued || !timer.Stop() {
-					// If the previous timer fired or didn't run, increment stopping wait group
+					// If no timer was cancelled, increment wait group
+					// This is because the timer will decrement the wait group when it fires
 					daita.stopping.Add(1)
 				}
 
@@ -374,19 +387,20 @@ func (daita *MaybenotDaita) stopPaddingTimer(machine uint64) {
 	}
 }
 
-func (daita *MaybenotDaita) maybenotEventToActions(event Event) []C.MaybenotAction {
-	cEvent := C.MaybenotEvent{
-		machine:    C.uintptr_t(event.Machine),
-		event_type: C.uint32_t(event.EventType),
+func (daita *MaybenotDaita) maybenotEventToActions(events []Event) []C.MaybenotAction {
+	for i := 0; i < len(events); i++ {
+		daita.eventsCBuf[i] = C.MaybenotEvent{
+			machine:    C.uintptr_t(events[i].Machine),
+			event_type: C.uint32_t(events[i].EventType),
+		}
 	}
 
 	var actionsWritten C.uintptr_t
 
-	// TODO: use unsafe.SliceData instead of the pointer dereference when the Go version gets bumped to 1.20 or later
-	// TODO: fetch an error string from the FFI corresponding to the error code
-	result := C.maybenot_on_events(daita.maybenot, &cEvent, 1, &daita.newActionsBuf[0], &actionsWritten)
+	firstElem := (*C.MaybenotEvent)(unsafe.Pointer(&daita.eventsCBuf[0]))
+	result := C.maybenot_on_events(daita.maybenot, firstElem, C.ulong(len(events)), &daita.newActionsBuf[0], &actionsWritten)
 	if result != 0 {
-		daita.logger.Errorf("Failed to handle event as it was a null pointer\nEvent: %d\n", event)
+		daita.logger.Errorf("Failed to handle event as it was a null pointer")
 		return nil
 	}
 
