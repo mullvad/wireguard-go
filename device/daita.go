@@ -20,6 +20,7 @@ type MaybenotDaita struct {
 	events          chan Event
 	eventsClosed    bool
 	eventsCloseLock sync.RWMutex
+	eventsCBuf      []C.MaybenotEvent
 	actions         chan Action
 	maybenot        *C.MaybenotFramework
 	newActionsBuf   []C.MaybenotAction
@@ -128,6 +129,7 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 	numMachines := C.maybenot_num_machines(maybenot)
 	daita := MaybenotDaita{
 		events:        make(chan Event, eventsCapacity),
+		eventsCBuf:    make([]C.MaybenotEvent, eventsCapacity),
 		eventsClosed:  false,
 		maybenot:      maybenot,
 		newActionsBuf: make([]C.MaybenotAction, numMachines),
@@ -263,9 +265,11 @@ func (daita *MaybenotDaita) runEventLoop(peer *Peer) {
 		daita.logger.Verbosef("%v - DAITA: event handler - stopped", peer)
 	}()
 
-	var events []Event
+	events := make([]Event, len(daita.events))
 
 	for {
+		events = events[:0]
+
 		event, more := <-daita.events
 		if !more {
 			// TODO: flush/send events here(?). but kinda pointless
@@ -290,7 +294,7 @@ func (daita *MaybenotDaita) runEventLoop(peer *Peer) {
 			}
 		}
 
-		events = append(events, event)
+		daita.handleEvents(events, peer)
 	}
 }
 
@@ -402,14 +406,12 @@ func (daita *MaybenotDaita) maybenotEventToActions(events []Event) []C.MaybenotA
 
 	// FIXME: handle events being too large
 
-	var cEvents [10_000]C.MaybenotEvent
-
 	if len(events) > 2 {
 		daita.logger.Errorf("Sending %v events at once", len(events))
 	}
 
 	for i := 0; i < len(events); i++ {
-		cEvents[i] = C.MaybenotEvent{
+		daita.eventsCBuf[i] = C.MaybenotEvent{
 			machine:    C.uintptr_t(events[i].Machine),
 			event_type: C.uint32_t(events[i].EventType),
 		}
@@ -420,7 +422,7 @@ func (daita *MaybenotDaita) maybenotEventToActions(events []Event) []C.MaybenotA
 	// TODO: use unsafe.SliceData instead of the pointer dereference when the Go version gets bumped to 1.20 or later
 	// TODO: fetch an error string from the FFI corresponding to the error code
 	//result := C.maybenot_on_events(daita.maybenot, &cEvent, 1, &daita.newActionsBuf[0], &actionsWritten)
-	firstElem := (*C.MaybenotEvent)(unsafe.Pointer(&cEvents[0]))
+	firstElem := (*C.MaybenotEvent)(unsafe.Pointer(&daita.eventsCBuf[0]))
 	result := C.maybenot_on_events(daita.maybenot, firstElem, C.ulong(len(events)), &daita.newActionsBuf[0], &actionsWritten)
 	if result != 0 {
 		daita.logger.Errorf("Failed to handle event as it was a null pointer")
