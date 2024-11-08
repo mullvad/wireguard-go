@@ -26,7 +26,7 @@ type MaybenotDaita struct {
 	paddingQueue    map[uint64]*time.Timer   // Map from machine to queued padding packets
 	machineTimers   map[uint64]*MachineTimer // Map from machine to machine timer
 	logger          *Logger
-	stopping        sync.WaitGroup // waitgroup for handleEvents and HandleDaitaActions
+	stopping        sync.WaitGroup // waitgroup for runEventLoop and HandleDaitaActions
 }
 
 type MachineTimer struct {
@@ -60,7 +60,7 @@ const (
 	ERROR_INTERMITTENT_FAILURE = -2
 )
 
-// TODO: Consider using an Action interface, and defining MaybenotDaita.handleEvent as a method on
+// TODO: Consider using an Action interface, and defining MaybenotDaita.handleEvents as a method on
 // that interface. Each Action enum variant could be an implenentation on that interface, that way
 // we wouldn't have to flatten the Action enum into this ugly struct.
 // Performance may be a concern though.
@@ -137,7 +137,7 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 	}
 
 	daita.stopping.Add(1)
-	go daita.handleEvents(peer)
+	go daita.runEventLoop(peer)
 
 	peer.daita = &daita
 
@@ -256,24 +256,45 @@ func injectPadding(action Action, peer *Peer) {
 	}
 }
 
-func (daita *MaybenotDaita) handleEvents(peer *Peer) {
+func (daita *MaybenotDaita) runEventLoop(peer *Peer) {
 	defer func() {
 		C.maybenot_stop(daita.maybenot)
 		daita.stopping.Done()
 		daita.logger.Verbosef("%v - DAITA: event handler - stopped", peer)
 	}()
 
+	var events []Event
+
 	for {
 		event, more := <-daita.events
 		if !more {
+			// TODO: flush/send events here(?). but kinda pointless
 			return
 		}
 
-		daita.handleEvent(event, peer)
+		events = append(events, event)
+
+		// Drain the channel
+		// TODO: limit size
+	HandleEvents:
+		for {
+			select {
+			case event, more := <-daita.events:
+				if !more {
+					// TODO: flush/send events here(?). but kinda pointless
+					return
+				}
+				events = append(events, event)
+			default:
+				break HandleEvents
+			}
+		}
+
+		events = append(events, event)
 	}
 }
 
-func (daita *MaybenotDaita) handleEvent(event Event, peer *Peer) {
+func (daita *MaybenotDaita) handleEvents(event []Event, peer *Peer) {
 	for _, cAction := range daita.maybenotEventToActions(event) {
 		action := cActionToGo(cAction)
 
@@ -367,6 +388,7 @@ func (daita *MaybenotDaita) stopMachineTimer(machine uint64) {
 }
 
 func (daita *MaybenotDaita) stopPaddingTimer(machine uint64) {
+	// FIXME: got out of range on exit, for paddingQueue[...]
 	if queuedPadding, ok := daita.paddingQueue[machine]; ok {
 		if queuedPadding.Stop() {
 			daita.stopping.Done()
@@ -374,19 +396,34 @@ func (daita *MaybenotDaita) stopPaddingTimer(machine uint64) {
 	}
 }
 
-func (daita *MaybenotDaita) maybenotEventToActions(event Event) []C.MaybenotAction {
-	cEvent := C.MaybenotEvent{
-		machine:    C.uintptr_t(event.Machine),
-		event_type: C.uint32_t(event.EventType),
+func (daita *MaybenotDaita) maybenotEventToActions(events []Event) []C.MaybenotAction {
+	// TODO: bench sending multiple events at the same time
+	// TODO: reuse some buf
+
+	// FIXME: handle events being too large
+
+	var cEvents [10_000]C.MaybenotEvent
+
+	if len(events) > 2 {
+		daita.logger.Errorf("Sending %v events at once", len(events))
+	}
+
+	for i := 0; i < len(events); i++ {
+		cEvents[i] = C.MaybenotEvent{
+			machine:    C.uintptr_t(events[i].Machine),
+			event_type: C.uint32_t(events[i].EventType),
+		}
 	}
 
 	var actionsWritten C.uintptr_t
 
 	// TODO: use unsafe.SliceData instead of the pointer dereference when the Go version gets bumped to 1.20 or later
 	// TODO: fetch an error string from the FFI corresponding to the error code
-	result := C.maybenot_on_events(daita.maybenot, &cEvent, 1, &daita.newActionsBuf[0], &actionsWritten)
+	//result := C.maybenot_on_events(daita.maybenot, &cEvent, 1, &daita.newActionsBuf[0], &actionsWritten)
+	firstElem := (*C.MaybenotEvent)(unsafe.Pointer(&cEvents[0]))
+	result := C.maybenot_on_events(daita.maybenot, firstElem, C.ulong(len(events)), &daita.newActionsBuf[0], &actionsWritten)
 	if result != 0 {
-		daita.logger.Errorf("Failed to handle event as it was a null pointer\nEvent: %d\n", event)
+		daita.logger.Errorf("Failed to handle event as it was a null pointer")
 		return nil
 	}
 
