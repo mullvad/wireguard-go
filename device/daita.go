@@ -398,7 +398,7 @@ func (daita *MaybenotDaita) maybenotEventToActions(events []Event) []C.MaybenotA
 	var actionsWritten C.uintptr_t
 
 	firstElem := (*C.MaybenotEvent)(unsafe.SliceData(daita.eventsCBuf))
-	result := C.maybenot_on_events(daita.maybenot, firstElem, C.ulong(len(events)), &daita.newActionsBuf[0], &actionsWritten)
+	result := C.maybenot_on_events(daita.maybenot, firstElem, C.uintptr_t(len(events)), &daita.newActionsBuf[0], &actionsWritten)
 	if result != 0 {
 		daita.logger.Errorf("Failed to handle event as it was a null pointer")
 		return nil
