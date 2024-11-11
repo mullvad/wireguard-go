@@ -345,9 +345,9 @@ func (daita *MaybenotDaita) handleEvents(event []Event, peer *Peer) {
 				startNewTimer = true
 			} else {
 				now := time.Now()
-				// Replace timer if it (should have) already fired
-				// or if the action duration is greater than the time left
-				startNewTimer = timer.completeAt.Before(now) || (action.Duration > timer.completeAt.Sub(now))
+				// Replace timer if it (should have) already fired (completeAt - now is negative)
+				// or in general if the action duration is greater than the time left
+				startNewTimer = action.Duration > timer.completeAt.Sub(now)
 			}
 
 			// Replace or start new timer
@@ -397,7 +397,7 @@ func (daita *MaybenotDaita) maybenotEventToActions(events []Event) []C.MaybenotA
 
 	var actionsWritten C.uintptr_t
 
-	firstElem := (*C.MaybenotEvent)(unsafe.Pointer(&daita.eventsCBuf[0]))
+	firstElem := (*C.MaybenotEvent)(unsafe.SliceData(daita.eventsCBuf))
 	result := C.maybenot_on_events(daita.maybenot, firstElem, C.ulong(len(events)), &daita.newActionsBuf[0], &actionsWritten)
 	if result != 0 {
 		daita.logger.Errorf("Failed to handle event as it was a null pointer")
