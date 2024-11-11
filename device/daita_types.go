@@ -34,6 +34,8 @@ type Daita interface {
 	NormalReceived(peer *Peer)
 	PaddingSent(peer *Peer, machine_id uint64)
 	PaddingReceived(peer *Peer)
+	TunnelSent(peer *Peer)
+	TunnelReceived(peer *Peer)
 }
 
 func (event EventType) String() string {

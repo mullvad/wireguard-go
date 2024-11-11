@@ -20,12 +20,30 @@ type MaybenotDaita struct {
 	events          chan Event
 	eventsClosed    bool
 	eventsCloseLock sync.RWMutex
+	eventsCBuf      []C.MaybenotEvent
 	actions         chan Action
 	maybenot        *C.MaybenotFramework
 	newActionsBuf   []C.MaybenotAction
-	paddingQueue    map[uint64]*time.Timer // Map from machine to queued padding packets
+	paddingQueue    map[uint64]*time.Timer   // Map from machine to queued padding packets
+	machineTimers   map[uint64]*MachineTimer // Map from machine to machine timer
 	logger          *Logger
-	stopping        sync.WaitGroup // waitgroup for handleEvents and HandleDaitaActions
+	stopping        sync.WaitGroup // waitgroup for runEventLoop and HandleDaitaActions
+}
+
+type MachineTimer struct {
+	completeAt time.Time
+	timer      *time.Timer
+}
+
+func (timer *MachineTimer) Stop() bool {
+	return timer.timer.Stop()
+}
+
+func newMachineTimer(timeout time.Duration, callback func()) *MachineTimer {
+	return &MachineTimer{
+		completeAt: time.Now().Add(timeout),
+		timer:      time.AfterFunc(timeout, callback),
+	}
 }
 
 type Event struct {
@@ -41,7 +59,7 @@ const (
 	ERROR_INTERMITTENT_FAILURE = -2
 )
 
-// TODO: Consider using an Action interface, and defining MaybenotDaita.handleEvent as a method on
+// TODO: Consider using an Action interface, and defining MaybenotDaita.handleEvents as a method on
 // that interface. Each Action enum variant could be an implenentation on that interface, that way
 // we wouldn't have to flatten the Action enum into this ugly struct.
 // Performance may be a concern though.
@@ -58,7 +76,7 @@ type Action struct {
 	Timer C.MaybenotTimer
 
 	// The time at which the action should be performed
-	// Used for ActionTypes: SendPadding, BlockOutgoing, UpdateTimer
+	// Used for ActionTypes: SendPadding, BlockOutgoing
 	Timeout time.Duration
 
 	// Used for ActionTypes: BlockOutgoing, UpdateTimer
@@ -71,7 +89,7 @@ type Action struct {
 	Bypass bool
 }
 
-func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapacity uint, maxPaddingBytes float64, maxBlockingBytes float64) bool {
+func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapacity uint, maxPaddingFrac float64, maxBlockingFrac float64) bool {
 	peer.Lock()
 	defer peer.Unlock()
 
@@ -92,11 +110,11 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 	var maybenot *C.MaybenotFramework
 	c_machines := C.CString(machines)
 
-	c_maxPaddingBytes := C.double(maxPaddingBytes)
-	c_maxBlockingBytes := C.double(maxBlockingBytes)
+	c_maxPaddingFrac := C.double(maxPaddingFrac)
+	c_maxBlockingFrac := C.double(maxBlockingFrac)
 
 	maybenot_result := C.maybenot_start(
-		c_machines, c_maxPaddingBytes, c_maxBlockingBytes,
+		c_machines, c_maxPaddingFrac, c_maxBlockingFrac,
 		&maybenot,
 	)
 	C.free(unsafe.Pointer(c_machines))
@@ -109,15 +127,17 @@ func (peer *Peer) EnableDaita(machines string, eventsCapacity uint, actionsCapac
 	numMachines := C.maybenot_num_machines(maybenot)
 	daita := MaybenotDaita{
 		events:        make(chan Event, eventsCapacity),
+		eventsCBuf:    make([]C.MaybenotEvent, eventsCapacity),
 		eventsClosed:  false,
 		maybenot:      maybenot,
 		newActionsBuf: make([]C.MaybenotAction, numMachines),
 		paddingQueue:  map[uint64]*time.Timer{},
+		machineTimers: map[uint64]*MachineTimer{},
 		logger:        peer.device.log,
 	}
 
 	daita.stopping.Add(1)
-	go daita.handleEvents(peer)
+	go daita.runEventLoop(peer)
 
 	peer.daita = &daita
 
@@ -132,6 +152,12 @@ func (daita *MaybenotDaita) Close() {
 	close(daita.events)
 	daita.eventsClosed = true
 	daita.eventsCloseLock.Unlock()
+
+	for _, timer := range daita.machineTimers {
+		if timer.Stop() {
+			daita.stopping.Done()
+		}
+	}
 
 	for _, queuedPadding := range daita.paddingQueue {
 		if queuedPadding.Stop() {
@@ -156,6 +182,22 @@ func (daita *MaybenotDaita) PaddingSent(peer *Peer, machine uint64) {
 
 func (daita *MaybenotDaita) NormalSent(peer *Peer) {
 	daita.event(peer, NormalSent, 0)
+}
+
+func (daita *MaybenotDaita) TunnelSent(peer *Peer) {
+	daita.event(peer, TunnelSent, 0)
+}
+
+func (daita *MaybenotDaita) TunnelReceived(peer *Peer) {
+	daita.event(peer, TunnelReceived, 0)
+}
+
+func (daita *MaybenotDaita) timerBegin(peer *Peer, machine uint64) {
+	daita.event(peer, TimerBegin, machine)
+}
+
+func (daita *MaybenotDaita) timerEnd(peer *Peer, machine uint64) {
+	daita.event(peer, TimerEnd, machine)
 }
 
 func (daita *MaybenotDaita) event(peer *Peer, eventType EventType, machine uint64) {
@@ -189,7 +231,15 @@ func injectPadding(action Action, peer *Peer) {
 		return
 	}
 
+	if action.Replace && peer.HasReplaceablePackets() {
+		peer.ReplacedPacketsInc()
+		peer.daita.PaddingSent(peer, action.Machine)
+		return
+	}
+
 	elem := peer.device.NewOutboundElement()
+	elem.daitaPadding = true
+
 	// All packets are MTU-sized when DAITA is enabled
 	size := uint16(peer.device.tun.mtu.Load())
 
@@ -206,36 +256,67 @@ func injectPadding(action Action, peer *Peer) {
 	}
 }
 
-func (daita *MaybenotDaita) handleEvents(peer *Peer) {
+func (daita *MaybenotDaita) runEventLoop(peer *Peer) {
 	defer func() {
 		C.maybenot_stop(daita.maybenot)
 		daita.stopping.Done()
 		daita.logger.Verbosef("%v - DAITA: event handler - stopped", peer)
 	}()
 
+	events := make([]Event, len(daita.events))
+
 	for {
+		events = events[:0]
+
 		event, more := <-daita.events
 		if !more {
 			return
 		}
 
-		daita.handleEvent(event, peer)
+		events = append(events, event)
+
+		// Drain remaining events
+	HandleEvents:
+		for {
+			select {
+			case event, more := <-daita.events:
+				if !more {
+					daita.logger.Verbosef("%v - DAITA: dropping %d unhandled events", peer, len(events))
+					return
+				}
+				events = append(events, event)
+
+				// Make sure not to exceed the maximum C buffer capacity
+				if len(events) >= len(daita.eventsCBuf) {
+					break HandleEvents
+				}
+			default:
+				break HandleEvents
+			}
+		}
+
+		daita.handleEvents(events, peer)
 	}
 }
 
-func (daita *MaybenotDaita) handleEvent(event Event, peer *Peer) {
+func (daita *MaybenotDaita) handleEvents(event []Event, peer *Peer) {
 	for _, cAction := range daita.maybenotEventToActions(event) {
 		action := cActionToGo(cAction)
 
 		switch action.ActionType {
 		case C.MaybenotAction_Cancel:
 			machine := action.Machine
-			// If padding is queued for the machine, cancel it
-			if queuedPadding, ok := daita.paddingQueue[machine]; ok {
-				if queuedPadding.Stop() {
-					daita.stopping.Done()
-				}
+
+			switch action.Timer {
+			case C.MaybenotTimer_Action:
+				daita.stopPaddingTimer(machine)
+			case C.MaybenotTimer_Internal:
+				daita.stopMachineTimer(machine)
+			case C.MaybenotTimer_All:
+				daita.stopMachineTimer(machine)
+				daita.stopPaddingTimer(machine)
 			}
+
 		case C.MaybenotAction_SendPadding:
 			// Check if a padding packet was already queued for the machine
 			// If so, try to cancel it
@@ -254,28 +335,72 @@ func (daita *MaybenotDaita) handleEvent(event Event, peer *Peer) {
 		case C.MaybenotAction_BlockOutgoing:
 			// TODO: implement BlockOutgoing
 			daita.logger.Errorf("ignoring BlockOutgoing action, unimplemented")
-			continue
 		case C.MaybenotAction_UpdateTimer:
-			// TODO: implement UpdateTimer
-			daita.logger.Errorf("ignoring UpdateTimer action, unimplemented")
-			continue
+			// Check if a padding packet was already queued for the machine
+			timer, timerWasQueued := daita.machineTimers[action.Machine]
+
+			var startNewTimer bool
+			if !timerWasQueued || action.Replace {
+				// Always start timer if it does not exist or if the replace flag is set
+				startNewTimer = true
+			} else {
+				now := time.Now()
+				// Replace timer if it (should have) already fired (completeAt - now is negative)
+				// or in general if the action duration is greater than the time left
+				startNewTimer = action.Duration > timer.completeAt.Sub(now)
+			}
+
+			// Replace or start new timer
+			if startNewTimer {
+				if !timerWasQueued || !timer.Stop() {
+					// If no timer was cancelled, increment wait group
+					// This is because the timer will decrement the wait group when it fires
+					daita.stopping.Add(1)
+				}
+
+				daita.timerBegin(peer, action.Machine)
+				daita.machineTimers[action.Machine] =
+					newMachineTimer(action.Duration, func() {
+						// Decrement wait group counter
+						defer daita.stopping.Done()
+
+						daita.timerEnd(peer, action.Machine)
+					})
+			}
 		}
 	}
 }
 
-func (daita *MaybenotDaita) maybenotEventToActions(event Event) []C.MaybenotAction {
-	cEvent := C.MaybenotEvent{
-		machine:    C.uintptr_t(event.Machine),
-		event_type: C.uint32_t(event.EventType),
+func (daita *MaybenotDaita) stopMachineTimer(machine uint64) {
+	if timer, ok := daita.machineTimers[machine]; ok {
+		if timer.Stop() {
+			daita.stopping.Done()
+		}
+	}
+}
+
+func (daita *MaybenotDaita) stopPaddingTimer(machine uint64) {
+	if queuedPadding, ok := daita.paddingQueue[machine]; ok {
+		if queuedPadding.Stop() {
+			daita.stopping.Done()
+		}
+	}
+}
+
+func (daita *MaybenotDaita) maybenotEventToActions(events []Event) []C.MaybenotAction {
+	for i := 0; i < len(events); i++ {
+		daita.eventsCBuf[i] = C.MaybenotEvent{
+			machine:    C.uintptr_t(events[i].Machine),
+			event_type: C.uint32_t(events[i].EventType),
+		}
 	}
 
 	var actionsWritten C.uintptr_t
 
-	// TODO: use unsafe.SliceData instead of the pointer dereference when the Go version gets bumped to 1.20 or later
-	// TODO: fetch an error string from the FFI corresponding to the error code
-	result := C.maybenot_on_events(daita.maybenot, &cEvent, 1, &daita.newActionsBuf[0], &actionsWritten)
+	firstElem := (*C.MaybenotEvent)(unsafe.SliceData(daita.eventsCBuf))
+	result := C.maybenot_on_events(daita.maybenot, firstElem, C.ulong(len(events)), &daita.newActionsBuf[0], &actionsWritten)
 	if result != 0 {
-		daita.logger.Errorf("Failed to handle event as it was a null pointer\nEvent: %d\n", event)
+		daita.logger.Errorf("Failed to handle event as it was a null pointer")
 		return nil
 	}
 

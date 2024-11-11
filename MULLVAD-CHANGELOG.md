@@ -20,7 +20,15 @@ Line wrap the file at 100 chars.                                              Th
 * **Security**: in case of vulnerabilities.
 
 ## [Unreleased]
+### Added
+- Add support for DAITA machine timers, and tunnel recv and send events.
+
+### Changed
+- Optimize handling of DAITA events by sending all available events in the channel to the Maybenot
+  framework.
+
 ### Fixed
+- Handle replace flag for padding packets.
 - Fix keepalive flag not being reset for pooled packets. This could result in fewer client
   handshakes over time.
 
