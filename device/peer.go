@@ -286,7 +286,7 @@ func (peer *Peer) OutboundPacketsInc() {
 
 func (peer *Peer) OutboundPacketsDec() {
 	if peer.outboundPackets.Add(-1) < 0 {
-		peer.device.log.Errorf("queuedPackets underflow")
+		panic("queuedPackets underflow")
 	}
 }
 
@@ -310,7 +310,7 @@ func (peer *Peer) OutboundAndReplacedPacketsMaybeDec(elem *QueueOutboundElement)
 		}
 	}
 	if peer.outboundPackets.Add(-1) < 0 {
-		peer.device.log.Errorf("queuedPackets underflow")
+		panic("queuedPackets underflow")
 	}
 }
 
