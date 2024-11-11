@@ -20,6 +20,9 @@ Line wrap the file at 100 chars.                                              Th
 * **Security**: in case of vulnerabilities.
 
 ## [Unreleased]
+
+
+## [0.1.4] - 2024-11-11
 ### Added
 - Add support for DAITA machine timers, and tunnel recv and send events.
 
