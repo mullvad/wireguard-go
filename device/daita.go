@@ -48,9 +48,7 @@ func newMachineTimer(timeout time.Duration, callback func()) *MachineTimer {
 
 type Event struct {
 	// The machine that generated the action that generated this event, if any.
-	Machine uint64
-
-	Peer      NoisePublicKey
+	Machine   uint64
 	EventType EventType
 }
 
@@ -207,7 +205,6 @@ func (daita *MaybenotDaita) event(peer *Peer, eventType EventType, machine uint6
 
 	event := Event{
 		Machine:   machine,
-		Peer:      peer.handshake.remoteStatic,
 		EventType: eventType,
 	}
 
