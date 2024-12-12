@@ -3,9 +3,9 @@ module golang.zx2c4.com/wireguard
 go 1.21
 
 require (
-	golang.org/x/crypto v0.13.0
-	golang.org/x/net v0.15.0
-	golang.org/x/sys v0.12.0
+	golang.org/x/crypto v0.31.0
+	golang.org/x/net v0.21.0
+	golang.org/x/sys v0.28.0
 	golang.zx2c4.com/wintun v0.0.0-20211104114900-415007cec224
 	gvisor.dev/gvisor v0.0.0-20230927004350-cbd86285d259
 )
