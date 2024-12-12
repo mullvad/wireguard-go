@@ -22,6 +22,17 @@ Line wrap the file at 100 chars.                                              Th
 ## [Unreleased]
 
 
+## [0.1.5] - 2024-12-12
+### Changed
+- Update `golang.org/x/crypto` to 0.31.
+
+### Removed
+- Remove unused pubkey field for DAITA events.
+
+### Fixed
+- Drop packets that cannot be received in netstack.
+
+
 ## [0.1.4] - 2024-11-11
 ### Added
 - Add support for DAITA machine timers, and tunnel recv and send events.
