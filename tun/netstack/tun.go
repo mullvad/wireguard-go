@@ -149,8 +149,8 @@ func (tun *netTun) WriteNotify() {
 	pkt.DecRef()
 
 	select {
-		case tun.incomingPacket <- view:
-		default:
+	case tun.incomingPacket <- view:
+	default:
 	}
 }
 
