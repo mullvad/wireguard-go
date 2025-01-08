@@ -234,6 +234,7 @@ func injectPadding(action Action, peer *Peer) {
 		return
 	}
 
+	peer.device.log.Errorf("Got action type %v, injecting padding", action.ActionType)
 	elem := peer.device.NewOutboundElement()
 	elem.daitaPadding = true
 
