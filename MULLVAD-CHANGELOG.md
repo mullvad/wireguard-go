@@ -20,6 +20,8 @@ Line wrap the file at 100 chars.                                              Th
 * **Security**: in case of vulnerabilities.
 
 ## [Unreleased]
+### Changed
+- Change how maybenot-ffi is included and built as a dependency to wireguard-go with DAITA support.
 
 
 ## [0.1.5] - 2024-12-12

@@ -1,0 +1,18 @@
+[package]
+name = "maybenot-ffi"
+license = "MIT OR Apache-2.0"
+edition = "2021"
+
+# HACK: Workaround for https://github.com/rust-lang/cargo/issues/6745
+# This is needed to allow a workspace to exist in a parent directory without including this crate.
+[workspace]
+
+# We are not setting crate-type = ["staticlib", "cdylib"] here, because
+# we solve that by passing --crate-type=$crate_type in the accompanying
+# Makefile instead. We do this because we only want to build it as a
+# staticlib on some platforms. On the other platforms it's included
+# as a normal dependency.
+
+[dependencies]
+# If this is bumped, check if `maybenot.h` has to be updated. See README.md
+maybenot-ffi = "2.0.1"
