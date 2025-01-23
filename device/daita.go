@@ -12,7 +12,7 @@ import (
 
 // #include <stdio.h>
 // #include <stdlib.h>
-// #include "../maybenot/crates/maybenot-ffi/maybenot.h"
+// #include "../maybenot-ffi/maybenot.h"
 // #cgo LDFLAGS: -L${SRCDIR}/../ -lmaybenot -lm
 import "C"
 

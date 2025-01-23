@@ -1,0 +1,15 @@
+[package]
+name = "maybenot-ffi"
+edition = "2021"
+
+# We are not setting crate-type = ["staticlib"] here, because
+# we solve that by passing --crate-type=staticlib in the accompanying
+# Makefile instead. We do this because we only want to build it as a
+# staticlib on some platforms. On the other platforms it's included
+# as a normal dependency.
+
+[dependencies]
+# This should be the one single place where we actually specify the
+# maybenot-ffi dependency and its version.
+# If this is bumped, check if `maybenot.h` has to be updated. See README.md
+maybenot-ffi = "2.0.1"

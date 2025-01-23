@@ -27,8 +27,8 @@ install: wireguard-go
 daita: libmaybenot.a
 	go build --tags daita -v -o wireguard-go
 
-libmaybenot.a: $(wildcard maybenot/*)
-	make --directory maybenot/crates/maybenot-ffi/ DESTINATION=$(LIBDEST) TARGET=$(TARGET)
+libmaybenot.a: $(wildcard maybenot-ffi/*)
+	make --directory maybenot-ffi DESTINATION=$(LIBDEST) TARGET=$(TARGET)
 
 test:
 	go test ./...
