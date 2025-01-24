@@ -7,7 +7,7 @@ CARGO_OUTPUT_DIR := $(CARGO_TARGET_DIR)/$(TARGET)/$(PROFILE)
 CARGOFLAGS += --target-dir $(CARGO_TARGET_DIR)
 
 ifeq ($(PROFILE), release)
-	CARGOFLAGS += --release
+	CARGOFLAGS += --release --locked
 endif
 
 ifneq ($(TARGET),)
