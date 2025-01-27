@@ -19,6 +19,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.zx2c4.com/wireguard/tun"
@@ -39,13 +40,15 @@ import (
 )
 
 type netTun struct {
-	ep             *channel.Endpoint
-	stack          *stack.Stack
-	events         chan tun.Event
-	incomingPacket chan *buffer.View
-	mtu            int
-	dnsServers     []netip.Addr
-	hasV4, hasV6   bool
+	ep                 *channel.Endpoint
+	stack              *stack.Stack
+	events             chan tun.Event
+	incomingPacket     chan *buffer.View
+	incomingPacketLock *sync.Mutex
+	shuttingDown       bool
+	mtu                int
+	dnsServers         []netip.Addr
+	hasV4, hasV6       bool
 }
 
 type Net netTun
@@ -57,12 +60,14 @@ func CreateNetTUN(localAddresses, dnsServers []netip.Addr, mtu int) (tun.Device,
 		HandleLocal:        true,
 	}
 	dev := &netTun{
-		ep:             channel.New(1024, uint32(mtu), ""),
-		stack:          stack.New(opts),
-		events:         make(chan tun.Event, 10),
-		incomingPacket: make(chan *buffer.View, 1000),
-		dnsServers:     dnsServers,
-		mtu:            mtu,
+		ep:                 channel.New(1024, uint32(mtu), ""),
+		stack:              stack.New(opts),
+		events:             make(chan tun.Event, 10),
+		incomingPacket:     make(chan *buffer.View, 1000),
+		incomingPacketLock: &sync.Mutex{},
+		shuttingDown:       false,
+		dnsServers:         dnsServers,
+		mtu:                mtu,
 	}
 	dev.ep.AddNotify(dev)
 	tcpipErr := dev.stack.CreateNIC(1, dev.ep)
@@ -148,6 +153,12 @@ func (tun *netTun) WriteNotify() {
 	view := pkt.ToView()
 	pkt.DecRef()
 
+	tun.incomingPacketLock.Lock()
+	defer tun.incomingPacketLock.Unlock()
+	if tun.shuttingDown {
+		return
+	}
+
 	select {
 	case tun.incomingPacket <- view:
 	default:
@@ -168,6 +179,9 @@ func (tun *netTun) Close() error {
 
 	tun.ep.Close()
 
+	tun.incomingPacketLock.Lock()
+	defer tun.incomingPacketLock.Unlock()
+	tun.shuttingDown = true
 	if tun.incomingPacket != nil {
 		close(tun.incomingPacket)
 	}
