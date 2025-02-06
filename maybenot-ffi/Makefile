@@ -1,6 +1,5 @@
 CARGO ?= cargo
 TARGET ?=
-PROFILE ?= release
 
 CARGO_OUTPUT_DIR := $(CARGO_TARGET_DIR)/$(TARGET)/$(PROFILE)
 CARGOFLAGS += --target-dir $(CARGO_TARGET_DIR)
@@ -30,6 +29,9 @@ $(CARGO_OUTPUT_DIR)/libmaybenot_ffi.a: src/*.rs Cargo.toml check-env
 check-env:
 ifndef CARGO_TARGET_DIR
 	$(error CARGO_TARGET_DIR is undefined)
+endif
+ifndef PROFILE
+	$(error PROFILE is undefined. This makefile is expected to run under cargo)
 endif
 
 clean:
