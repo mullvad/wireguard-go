@@ -20,8 +20,15 @@ Line wrap the file at 100 chars.                                              Th
 * **Security**: in case of vulnerabilities.
 
 ## [Unreleased]
+
+
+## [0.1.6] - 2025-02-19
 ### Changed
 - Change how maybenot-ffi is included and built as a dependency to wireguard-go with DAITA support.
+
+### Fixed
+- Synchronize shutdown of netstack write channel. Prevents panic in netstack when shutting down
+  a tunnel device.
 
 
 ## [0.1.5] - 2024-12-12
